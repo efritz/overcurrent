@@ -16,6 +16,10 @@ const (
 
 	TripEvent CircuitEvent = iota
 	ResetEvent
+
+	DefaultInvocationTimeout          = 0.01
+	DefaultResetTimeout               = 0.1
+	DefaultHalfClosedRetryProbability = 0.5
 )
 
 var (
@@ -23,35 +27,48 @@ var (
 	InvocationTimeoutError = errors.New("Invocation has timed out.")
 )
 
+//
+//
+
+type BreakerConfig struct {
+	InvocationTimeout          float64
+	ResetTimeout               float64
+	HalfClosedRetryProbability float64
+}
+
+func NewBreakerConfig() BreakerConfig {
+	return BreakerConfig{
+		InvocationTimeout:          DefaultInvocationTimeout,
+		ResetTimeout:               DefaultResetTimeout,
+		HalfClosedRetryProbability: DefaultHalfClosedRetryProbability,
+	}
+}
+
+//
+//
+
 type Breaker struct {
-	Events chan CircuitEvent
+	circuit       func() error
+	config        BreakerConfig
+	tripCondition TripCondition
+	Events        chan CircuitEvent
 
-	circuit func() error
-
-	invocationTimeout     float64
-	failureThreshold      int
-	resetTimeout          float64
-	halfClosedProbability float64
-
-	failureCount    int
 	hardTrip        bool
 	lastFailureTime *time.Time
 }
 
-func NewBreaker(circuit func() error) *Breaker {
+func NewBreaker(circuit func() error, config BreakerConfig, tripCondition TripCondition) *Breaker {
 	return &Breaker{
-		Events:                make(chan CircuitEvent),
-		circuit:               circuit,
-		invocationTimeout:     0.01,
-		failureThreshold:      5,
-		resetTimeout:          0.1,
-		halfClosedProbability: 0.5,
+		circuit:       circuit,
+		config:        config,
+		tripCondition: tripCondition,
+		Events:        make(chan CircuitEvent),
 	}
 }
 
 func (b *Breaker) State() CircuitState {
-	if b.failureCount >= b.failureThreshold {
-		if time.Now().Sub(*b.lastFailureTime) > time.Duration(b.resetTimeout) {
+	if b.tripCondition.ShouldTrip() {
+		if time.Now().Sub(*b.lastFailureTime) > time.Duration(b.config.ResetTimeout) {
 			return HalfClosedState
 		} else {
 			return OpenState
@@ -62,7 +79,7 @@ func (b *Breaker) State() CircuitState {
 }
 
 func (b *Breaker) Call() error {
-	if b.shouldTry() {
+	if !b.shouldTry() {
 		return CircuitOpenError
 	}
 
@@ -76,11 +93,19 @@ func (b *Breaker) Call() error {
 }
 
 func (b *Breaker) shouldTry() bool {
-	return b.hardTrip || b.State() == OpenState || (b.State() == HalfClosedState && rand.Float64() <= b.halfClosedProbability)
+	if b.hardTrip || b.State() == OpenState {
+		return false
+	}
+
+	if b.State() == HalfClosedState {
+		return rand.Float64() <= b.config.HalfClosedRetryProbability
+	}
+
+	return true
 }
 
 func (b *Breaker) callWithTimeout() error {
-	if b.invocationTimeout == 0 {
+	if b.config.InvocationTimeout == 0 {
 		return b.circuit()
 	}
 
@@ -93,7 +118,7 @@ func (b *Breaker) callWithTimeout() error {
 	select {
 	case err := <-c:
 		return err
-	case <-time.After(time.Duration(b.invocationTimeout)):
+	case <-time.After(time.Duration(b.config.InvocationTimeout)):
 		return InvocationTimeoutError
 	}
 }
@@ -101,8 +126,9 @@ func (b *Breaker) callWithTimeout() error {
 func (b *Breaker) recordError() {
 	now := time.Now()
 
-	b.failureCount++
 	b.lastFailureTime = &now
+
+	b.tripCondition.Failure()
 	b.sendEvent(TripEvent)
 }
 
@@ -118,8 +144,9 @@ func (b *Breaker) Trip() {
 }
 
 func (b *Breaker) Reset() {
-	b.failureCount = 0
 	b.lastFailureTime = nil
 	b.hardTrip = false
+
+	b.tripCondition.Success()
 	b.sendEvent(ResetEvent)
 }
