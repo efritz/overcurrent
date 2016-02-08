@@ -35,6 +35,7 @@ type BreakerConfig struct {
 	ResetTimeout               float64
 	HalfClosedRetryProbability float64
 	TripCondition              TripCondition
+	FailureInterpreter         FailureInterpreter
 }
 
 func NewBreakerConfig() BreakerConfig {
@@ -43,6 +44,7 @@ func NewBreakerConfig() BreakerConfig {
 		ResetTimeout:               DefaultResetTimeout,
 		HalfClosedRetryProbability: DefaultHalfClosedRetryProbability,
 		TripCondition:              NewConsecutiveFailureTripCondition(5),
+		FailureInterpreter:         NewAnyErrorFailureInterpreter(),
 	}
 }
 
@@ -83,7 +85,7 @@ func (b *Breaker) Call() error {
 		return CircuitOpenError
 	}
 
-	if err := b.callWithTimeout(); err != nil {
+	if err := b.callWithTimeout(); err != nil && b.config.FailureInterpreter.ShouldTrip(err) {
 		b.recordError()
 		return err
 	}
