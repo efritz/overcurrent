@@ -34,6 +34,7 @@ type BreakerConfig struct {
 	InvocationTimeout          float64
 	ResetTimeout               float64
 	HalfClosedRetryProbability float64
+	TripCondition              TripCondition
 }
 
 func NewBreakerConfig() BreakerConfig {
@@ -41,6 +42,7 @@ func NewBreakerConfig() BreakerConfig {
 		InvocationTimeout:          DefaultInvocationTimeout,
 		ResetTimeout:               DefaultResetTimeout,
 		HalfClosedRetryProbability: DefaultHalfClosedRetryProbability,
+		TripCondition:              NewConsecutiveFailureTripCondition(5),
 	}
 }
 
@@ -48,26 +50,24 @@ func NewBreakerConfig() BreakerConfig {
 //
 
 type Breaker struct {
-	circuit       func() error
-	config        BreakerConfig
-	tripCondition TripCondition
-	Events        chan CircuitEvent
+	circuit func() error
+	config  BreakerConfig
+	Events  chan CircuitEvent
 
 	hardTrip        bool
 	lastFailureTime *time.Time
 }
 
-func NewBreaker(circuit func() error, config BreakerConfig, tripCondition TripCondition) *Breaker {
+func NewBreaker(circuit func() error, config BreakerConfig) *Breaker {
 	return &Breaker{
-		circuit:       circuit,
-		config:        config,
-		tripCondition: tripCondition,
-		Events:        make(chan CircuitEvent),
+		circuit: circuit,
+		config:  config,
+		Events:  make(chan CircuitEvent),
 	}
 }
 
 func (b *Breaker) State() CircuitState {
-	if b.tripCondition.ShouldTrip() {
+	if b.config.TripCondition.ShouldTrip() {
 		if time.Now().Sub(*b.lastFailureTime) > time.Duration(b.config.ResetTimeout) {
 			return HalfClosedState
 		} else {
@@ -125,10 +125,9 @@ func (b *Breaker) callWithTimeout() error {
 
 func (b *Breaker) recordError() {
 	now := time.Now()
-
 	b.lastFailureTime = &now
 
-	b.tripCondition.Failure()
+	b.config.TripCondition.Failure()
 	b.sendEvent(TripEvent)
 }
 
@@ -147,6 +146,6 @@ func (b *Breaker) Reset() {
 	b.lastFailureTime = nil
 	b.hardTrip = false
 
-	b.tripCondition.Success()
+	b.config.TripCondition.Success()
 	b.sendEvent(ResetEvent)
 }
