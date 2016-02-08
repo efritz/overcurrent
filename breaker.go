@@ -76,7 +76,7 @@ func (b *Breaker) Call() error {
 }
 
 func (b *Breaker) shouldTry() bool {
-	return b.hardTrip || b.State() == OpenState || (b.State() == HalfClosedState && rand.Float32() <= b.halfClosedProbability)
+	return b.hardTrip || b.State() == OpenState || (b.State() == HalfClosedState && rand.Float64() <= b.halfClosedProbability)
 }
 
 func (b *Breaker) callWithTimeout() error {
