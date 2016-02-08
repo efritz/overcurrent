@@ -27,9 +27,10 @@ type Breaker struct {
 
 	circuit func() error
 
-	invocationTimeout float64
-	failureThreshold  int
-	resetTimeout      float64
+	invocationTimeout     float64
+	failureThreshold      int
+	resetTimeout          float64
+	halfClosedProbability float64
 
 	failureCount    int
 	hardTrip        bool
@@ -38,11 +39,12 @@ type Breaker struct {
 
 func NewBreaker(circuit func() error) *Breaker {
 	return &Breaker{
-		Events:            make(chan CircuitEvent),
-		circuit:           circuit,
-		invocationTimeout: 0.01,
-		failureThreshold:  5,
-		resetTimeout:      0.1,
+		Events:                make(chan CircuitEvent),
+		circuit:               circuit,
+		invocationTimeout:     0.01,
+		failureThreshold:      5,
+		resetTimeout:          0.1,
+		halfClosedProbability: 0.5,
 	}
 }
 
@@ -59,7 +61,7 @@ func (b *Breaker) State() CircuitState {
 }
 
 func (b *Breaker) Call() error {
-	if b.State() == OpenState || b.hardTrip {
+	if b.shouldTry() {
 		return CircuitOpenError
 	}
 
@@ -70,6 +72,10 @@ func (b *Breaker) Call() error {
 
 	b.Reset()
 	return nil
+}
+
+func (b *Breaker) shouldTry() bool {
+	return b.hardTrip || b.State() == OpenState || (b.State() == HalfClosedState && rand.Float32() <= b.halfClosedProbability)
 }
 
 func (b *Breaker) callWithTimeout() error {
