@@ -2,6 +2,7 @@ package overcurrent
 
 import (
 	"errors"
+	"math/rand"
 	"time"
 )
 
