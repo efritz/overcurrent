@@ -52,19 +52,17 @@ func NewBreakerConfig() BreakerConfig {
 //
 
 type Breaker struct {
-	circuit func() error
-	config  BreakerConfig
-	Events  chan CircuitEvent
+	config BreakerConfig
+	Events chan CircuitEvent
 
 	hardTrip        bool
 	lastFailureTime *time.Time
 }
 
-func NewBreaker(circuit func() error, config BreakerConfig) *Breaker {
+func NewBreaker(config BreakerConfig) *Breaker {
 	return &Breaker{
-		circuit: circuit,
-		config:  config,
-		Events:  make(chan CircuitEvent),
+		config: config,
+		Events: make(chan CircuitEvent),
 	}
 }
 
@@ -80,12 +78,12 @@ func (b *Breaker) State() CircuitState {
 	}
 }
 
-func (b *Breaker) Call() error {
+func (b *Breaker) Call(f func() error) error {
 	if !b.shouldTry() {
 		return CircuitOpenError
 	}
 
-	if err := b.callWithTimeout(); err != nil && b.config.FailureInterpreter.ShouldTrip(err) {
+	if err := b.callWithTimeout(f); err != nil && b.config.FailureInterpreter.ShouldTrip(err) {
 		b.recordError()
 		return err
 	}
@@ -106,14 +104,14 @@ func (b *Breaker) shouldTry() bool {
 	return true
 }
 
-func (b *Breaker) callWithTimeout() error {
+func (b *Breaker) callWithTimeout(f func() error) error {
 	if b.config.InvocationTimeout == 0 {
-		return b.circuit()
+		return f()
 	}
 
 	c := make(chan error)
 	go func() {
-		c <- b.circuit()
+		c <- f()
 		close(c)
 	}()
 
