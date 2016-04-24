@@ -10,12 +10,9 @@ type CircuitState int
 type CircuitEvent int
 
 const (
-	OpenState CircuitState = iota
-	ClosedState
-	HalfClosedState
-
-	TripEvent CircuitEvent = iota
-	ResetEvent
+	OpenState       CircuitState = iota // Failure state
+	ClosedState                         // Success state
+	HalfClosedState                     // Cautious, probabilistic retry state
 )
 
 var (
@@ -32,10 +29,6 @@ var (
 type CircuitBreaker struct {
 	config BreakerConfig
 
-	// A channel on which trip and reset events are sent. These can be monitored
-	// for logging purposes, or safely ignored.
-	Events chan CircuitEvent
-
 	hardTrip        bool
 	lastFailureTime *time.Time
 }
@@ -43,7 +36,6 @@ type CircuitBreaker struct {
 func NewBreaker(config BreakerConfig) *CircuitBreaker {
 	return &CircuitBreaker{
 		config: config,
-		Events: make(chan CircuitEvent),
 	}
 }
 
@@ -75,23 +67,7 @@ func (cb *CircuitBreaker) Trip() {
 
 // Reset the circuit breaker.
 func (cb *CircuitBreaker) Reset() {
-	cb.lastFailureTime = nil
-	cb.hardTrip = false
-
-	cb.config.TripCondition.Success()
-	cb.sendEvent(ResetEvent)
-}
-
-func (cb *CircuitBreaker) shouldTry() bool {
-	if cb.hardTrip || cb.state() == OpenState {
-		return false
-	}
-
-	if cb.state() == HalfClosedState {
-		return rand.Float64() <= cb.config.HalfClosedRetryProbability
-	}
-
-	return true
+	cb.recordSuccess()
 }
 
 func (cb *CircuitBreaker) state() CircuitState {
@@ -104,6 +80,18 @@ func (cb *CircuitBreaker) state() CircuitState {
 	} else {
 		return ClosedState
 	}
+}
+
+func (cb *CircuitBreaker) shouldTry() bool {
+	if cb.hardTrip || cb.state() == OpenState {
+		return false
+	}
+
+	if cb.state() == HalfClosedState {
+		return rand.Float64() <= cb.config.HalfClosedRetryProbability
+	}
+
+	return true
 }
 
 func (cb *CircuitBreaker) callWithTimeout(f func() error) error {
@@ -120,21 +108,19 @@ func (cb *CircuitBreaker) callWithTimeout(f func() error) error {
 	select {
 	case err := <-c:
 		return err
-	case <-time.After(time.Duration(cb.config.InvocationTimeout)):
+	case <-time.After(cb.config.InvocationTimeout):
 		return InvocationTimeoutError
 	}
+}
+
+func (cb *CircuitBreaker) recordSuccess() {
+	cb.lastFailureTime = nil
+	cb.hardTrip = false
+	cb.config.TripCondition.Success()
 }
 
 func (cb *CircuitBreaker) recordFailure() {
 	now := time.Now()
 	cb.lastFailureTime = &now
-
 	cb.config.TripCondition.Failure()
-	cb.sendEvent(TripEvent)
-}
-
-func (cb *CircuitBreaker) sendEvent(event CircuitEvent) {
-	select {
-	case cb.Events <- event:
-	}
 }
