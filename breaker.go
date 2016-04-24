@@ -47,18 +47,6 @@ func NewBreaker(config BreakerConfig) *CircuitBreaker {
 	}
 }
 
-func (cb *CircuitBreaker) State() CircuitState {
-	if cb.config.TripCondition.ShouldTrip() {
-		if time.Now().Sub(*cb.lastFailureTime) > time.Duration(cb.config.ResetTimeout) {
-			return HalfClosedState
-		} else {
-			return OpenState
-		}
-	} else {
-		return ClosedState
-	}
-}
-
 // Attempt to call the given function if the circuit breaker is closed, or if
 // the circuit breaker is half-closed (with some probability). Otherwise, return
 // a CircuitOpenError. If the function times out, the circuit breaker will fail
@@ -70,7 +58,7 @@ func (cb *CircuitBreaker) Call(f func() error) error {
 	}
 
 	if err := cb.callWithTimeout(f); err != nil && cb.config.FailureInterpreter.ShouldTrip(err) {
-		cb.recordError()
+		cb.recordFailure()
 		return err
 	}
 
@@ -78,16 +66,44 @@ func (cb *CircuitBreaker) Call(f func() error) error {
 	return nil
 }
 
+// Manually trip the circuit breaker. The circuit breaker will remain open until
+// it is manually reset.
+func (cb *CircuitBreaker) Trip() {
+	cb.hardTrip = true
+	cb.recordFailure()
+}
+
+// Reset the circuit breaker.
+func (cb *CircuitBreaker) Reset() {
+	cb.lastFailureTime = nil
+	cb.hardTrip = false
+
+	cb.config.TripCondition.Success()
+	cb.sendEvent(ResetEvent)
+}
+
 func (cb *CircuitBreaker) shouldTry() bool {
-	if cb.hardTrip || cb.State() == OpenState {
+	if cb.hardTrip || cb.state() == OpenState {
 		return false
 	}
 
-	if cb.State() == HalfClosedState {
+	if cb.state() == HalfClosedState {
 		return rand.Float64() <= cb.config.HalfClosedRetryProbability
 	}
 
 	return true
+}
+
+func (cb *CircuitBreaker) state() CircuitState {
+	if cb.config.TripCondition.ShouldTrip() {
+		if time.Now().Sub(*cb.lastFailureTime) > time.Duration(cb.config.ResetTimeout) {
+			return HalfClosedState
+		} else {
+			return OpenState
+		}
+	} else {
+		return ClosedState
+	}
 }
 
 func (cb *CircuitBreaker) callWithTimeout(f func() error) error {
@@ -109,7 +125,7 @@ func (cb *CircuitBreaker) callWithTimeout(f func() error) error {
 	}
 }
 
-func (cb *CircuitBreaker) recordError() {
+func (cb *CircuitBreaker) recordFailure() {
 	now := time.Now()
 	cb.lastFailureTime = &now
 
@@ -121,17 +137,4 @@ func (cb *CircuitBreaker) sendEvent(event CircuitEvent) {
 	select {
 	case cb.Events <- event:
 	}
-}
-
-func (cb *CircuitBreaker) Trip() {
-	cb.hardTrip = true
-	cb.recordError()
-}
-
-func (cb *CircuitBreaker) Reset() {
-	cb.lastFailureTime = nil
-	cb.hardTrip = false
-
-	cb.config.TripCondition.Success()
-	cb.sendEvent(ResetEvent)
 }
