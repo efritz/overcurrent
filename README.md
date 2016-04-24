@@ -8,11 +8,10 @@ Go library for protecting function calls via circuit breaker pattern.
 
 The circuit breaker pattern can prevent an application from repeatedly trying to
 execute an operation that is likely to fail. If the problem appears to have been
-rectified, the application can attempt to invoke the operation.
-
-This is useful in a distributed environment where an application accesses remote
-resources and services. It is possible (and likely at scale) for these operations
-to fail due to transient faults such as:
+rectified, the application can attempt to invoke the operation. This is useful
+in a distributed environment where an application accesses remote resources and
+services. It is possible (and likely at scale) for these operations to fail due
+to transient faults such as:
 
 - timeouts
 - slow network connections
@@ -91,11 +90,9 @@ if err == nil {
 *Design Choice:* The protected function is given to the breaker as a parameter
 to each invocation of `Call`, as opposed to begin registered with the circuit
 breaker at initialization. This is to increase the flexibility of the API so
-the input to the function can easily change on each invocation.
-
-It is **not** advised that several disparate functions are passed to the same
-breaker - failures from one function will influence the other in ways that are
-not intuitive.
+the input to the function can easily change on each invocation. It is **not**
+advised that several disparate functions are passed to the same breaker - failures
+from one function will influence the other in ways that are not intuitive.
 
 The breaker can also be explicitly tripped and reset. If a breaker is manually
 tripped, then it will remain in open state until it is manually reset (it will
