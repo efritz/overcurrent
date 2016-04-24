@@ -1,17 +1,21 @@
 package overcurrent
 
+import (
+	"time"
+)
+
 const (
-	DefaultInvocationTimeout          = 0.01
-	DefaultResetTimeout               = 0.1
-	DefaultHalfClosedRetryProbability = 0.5
+	DefaultInvocationTimeout          = 100 * time.Millisecond
+	DefaultResetTimeout               = 100 * time.Millisecond
+	DefaultHalfClosedRetryProbability = .5
 )
 
 //
 //
 
 type BreakerConfig struct {
-	InvocationTimeout          float64
-	ResetTimeout               float64
+	InvocationTimeout          time.Duration
+	ResetTimeout               time.Duration
 	HalfClosedRetryProbability float64
 	TripCondition              TripCondition
 	FailureInterpreter         FailureInterpreter
