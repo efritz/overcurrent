@@ -71,15 +71,17 @@ func (cb *CircuitBreaker) Reset() {
 }
 
 func (cb *CircuitBreaker) state() CircuitState {
-	if cb.config.TripCondition.ShouldTrip() {
-		if time.Now().Sub(*cb.lastFailureTime) > time.Duration(cb.config.ResetTimeout) {
-			return HalfClosedState
-		} else {
-			return OpenState
-		}
-	} else {
+	if !cb.config.TripCondition.ShouldTrip() {
 		return ClosedState
 	}
+
+	if cb.lastFailureTime != nil {
+		if time.Now().Sub(*cb.lastFailureTime) >= cb.config.ResetTimeout {
+			return HalfClosedState
+		}
+	}
+
+	return OpenState
 }
 
 func (cb *CircuitBreaker) shouldTry() bool {

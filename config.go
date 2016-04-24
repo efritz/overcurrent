@@ -6,7 +6,7 @@ import (
 
 const (
 	DefaultInvocationTimeout          = 100 * time.Millisecond
-	DefaultResetTimeout               = 100 * time.Millisecond
+	DefaultResetTimeout               = 1000 * time.Millisecond
 	DefaultHalfClosedRetryProbability = .5
 )
 
