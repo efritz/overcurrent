@@ -1,6 +1,10 @@
 package overcurrent
 
-import . "gopkg.in/check.v1"
+import (
+	"time"
+
+	. "gopkg.in/check.v1"
+)
 
 func (s *OvercurrentSuite) TestConsecutive(c *C) {
 	tc := NewConsecutiveFailureTripCondition(25)
@@ -30,4 +34,28 @@ func (s *OvercurrentSuite) TestConsecutiveBrokenChain(c *C) {
 	}
 
 	c.Assert(tc.ShouldTrip(), Equals, false)
+}
+
+func (s *OvercurrentSuite) TestWindow(c *C) {
+	tc := NewWindowFailureTripCondition(150*time.Millisecond, 10)
+
+	c.Assert(tc.ShouldTrip(), Equals, false)
+
+	tc.Failure()
+	<-time.After(50 * time.Millisecond)
+
+	for i := 0; i < 8; i++ {
+		tc.Success()
+		tc.Failure()
+	}
+
+	<-time.After(50 * time.Millisecond)
+	c.Assert(tc.ShouldTrip(), Equals, false)
+	tc.Failure()
+	c.Assert(tc.ShouldTrip(), Equals, true)
+
+	<-time.After(50 * time.Millisecond)
+	c.Assert(tc.ShouldTrip(), Equals, false)
+	tc.Failure()
+	c.Assert(tc.ShouldTrip(), Equals, true)
 }

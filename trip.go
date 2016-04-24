@@ -1,5 +1,7 @@
 package overcurrent
 
+import "time"
+
 // TripCondition is the interface that controls the open/closed state of the
 // circuit breaker based on failure history.
 type TripCondition interface {
@@ -14,8 +16,7 @@ type TripCondition interface {
 	Success()
 
 	// Determines the state of the breaker - returns true or false for open and
-	// closed state, respectively. This method should be idempotent and use the
-	// state altered by the failure and success methods.
+	// closed state, respectively.
 	ShouldTrip() bool
 }
 
@@ -37,6 +38,43 @@ func (tc *ConsecutiveFailureTripCondition) ShouldTrip() bool { return tc.count >
 func NewConsecutiveFailureTripCondition(threshold int) *ConsecutiveFailureTripCondition {
 	return &ConsecutiveFailureTripCondition{
 		count:     0,
+		threshold: threshold,
+	}
+}
+
+//
+//
+
+type WindowFailureTripCondition struct {
+	log       []time.Time
+	window    time.Duration
+	threshold int
+}
+
+func (tc *WindowFailureTripCondition) Failure() { tc.log = append(tc.log, time.Now()) }
+func (tc *WindowFailureTripCondition) Success() {}
+
+func (tc *WindowFailureTripCondition) ShouldTrip() bool {
+	i := 0
+	for i < len(tc.log) && time.Now().Sub(tc.log[i]) > tc.window {
+		i++
+	}
+
+	if i > 0 {
+		tc.log = tc.log[i:]
+	}
+
+	return len(tc.log) >= tc.threshold
+}
+
+// A trip condition that trips the circuit breaker after a configurable number
+// of failures occur within a configurable rolling window. The circuit breaker
+// will remain in the open state until enough time has elapsed for a failure to
+// fall out of recent memory.
+func NewWindowFailureTripCondition(window time.Duration, threshold int) *WindowFailureTripCondition {
+	return &WindowFailureTripCondition{
+		log:       []time.Time{},
+		window:    window,
 		threshold: threshold,
 	}
 }
