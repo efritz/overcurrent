@@ -26,8 +26,14 @@ var (
 //
 //
 
+// A CircuitBreaker protects the invocation of a function and monitors failures.
+// After a certain failure threshold is reached, future invocations will instead
+// return a CircuitOpenError instead of attempting to invoke the function again.
 type CircuitBreaker struct {
 	config BreakerConfig
+
+	// A channel on which trip and reset events are sent. These can be monitored
+	// for logging purposes, or safely ignored.
 	Events chan CircuitEvent
 
 	hardTrip        bool
@@ -53,6 +59,11 @@ func (cb *CircuitBreaker) State() CircuitState {
 	}
 }
 
+// Attempt to call the given function if the circuit breaker is closed, or if
+// the circuit breaker is half-closed (with some probability). Otherwise, return
+// a CircuitOpenError. If the function times out, the circuit breaker will fail
+// with a InvocationTimeoutError. If the function is invoked and yields an error
+// value, that value is returned.
 func (cb *CircuitBreaker) Call(f func() error) error {
 	if !cb.shouldTry() {
 		return CircuitOpenError

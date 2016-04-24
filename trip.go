@@ -1,7 +1,7 @@
 package overcurrent
 
-// TripCondition is the interface that controls the trip state of the circuit
-// breaker.
+// TripCondition is the interface that controls the open/closed state of the
+// circuit breaker based on failure history.
 type TripCondition interface {
 	// Invoked when the circuit breaker was closed or half-closed and failure
 	// occurs, or when the breaker is hard-tripped. Stats should be collected
@@ -31,7 +31,9 @@ func (tc *ConsecutiveFailureTripCondition) Failure()         { tc.count++ }
 func (tc *ConsecutiveFailureTripCondition) Success()         { tc.count = 0 }
 func (tc *ConsecutiveFailureTripCondition) ShouldTrip() bool { return tc.count >= tc.threshold }
 
-// A trip condition that trips the circuit breaker after `threshold` failures in a row.
+// A trip condition that trips the circuit breaker after a configurable number
+// of failures occur in a row. A single successful call will break the failure
+// chain.
 func NewConsecutiveFailureTripCondition(threshold int) *ConsecutiveFailureTripCondition {
 	return &ConsecutiveFailureTripCondition{
 		count:     0,
