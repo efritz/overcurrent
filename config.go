@@ -17,8 +17,8 @@ type BreakerConfig struct {
 	InvocationTimeout          time.Duration
 	ResetTimeout               time.Duration
 	HalfClosedRetryProbability float64
-	TripCondition              TripCondition
 	FailureInterpreter         FailureInterpreter
+	TripCondition              TripCondition
 }
 
 func NewBreakerConfig() BreakerConfig {
@@ -26,7 +26,7 @@ func NewBreakerConfig() BreakerConfig {
 		InvocationTimeout:          DefaultInvocationTimeout,
 		ResetTimeout:               DefaultResetTimeout,
 		HalfClosedRetryProbability: DefaultHalfClosedRetryProbability,
-		TripCondition:              NewConsecutiveFailureTripCondition(5),
 		FailureInterpreter:         NewAnyErrorFailureInterpreter(),
+		TripCondition:              NewConsecutiveFailureTripCondition(5),
 	}
 }

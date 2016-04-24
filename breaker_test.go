@@ -71,8 +71,8 @@ func (s *OvercurrentSuite) TestHalfOpenFailure(c *C) {
 		InvocationTimeout:          DefaultInvocationTimeout,
 		ResetTimeout:               250 * time.Millisecond,
 		HalfClosedRetryProbability: 1,
-		TripCondition:              NewConsecutiveFailureTripCondition(5),
 		FailureInterpreter:         NewAnyErrorFailureInterpreter(),
+		TripCondition:              NewConsecutiveFailureTripCondition(5),
 	})
 
 	err := errors.New("Test error.")
@@ -94,8 +94,8 @@ func (s *OvercurrentSuite) TestHalfOpenReset(c *C) {
 		InvocationTimeout:          DefaultInvocationTimeout,
 		ResetTimeout:               250 * time.Millisecond,
 		HalfClosedRetryProbability: 1,
-		TripCondition:              NewConsecutiveFailureTripCondition(5),
 		FailureInterpreter:         NewAnyErrorFailureInterpreter(),
+		TripCondition:              NewConsecutiveFailureTripCondition(5),
 	})
 
 	err := errors.New("Test error.")
@@ -130,8 +130,8 @@ func (s *OvercurrentSuite) TestHalfOpenProbability(c *C) {
 			InvocationTimeout:          DefaultInvocationTimeout,
 			ResetTimeout:               1 * time.Nanosecond,
 			HalfClosedRetryProbability: prob,
-			TripCondition:              NewConsecutiveFailureTripCondition(1),
 			FailureInterpreter:         NewAnyErrorFailureInterpreter(),
+			TripCondition:              NewConsecutiveFailureTripCondition(1),
 		})
 
 		cb.Call(fn1)
@@ -154,8 +154,8 @@ func (s *OvercurrentSuite) TestHardTrip(c *C) {
 		InvocationTimeout:          DefaultInvocationTimeout,
 		ResetTimeout:               250 * time.Millisecond,
 		HalfClosedRetryProbability: 1,
-		TripCondition:              NewConsecutiveFailureTripCondition(1),
 		FailureInterpreter:         NewAnyErrorFailureInterpreter(),
+		TripCondition:              NewConsecutiveFailureTripCondition(1),
 	})
 
 	fn := func() error {
