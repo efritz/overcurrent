@@ -44,13 +44,17 @@ breaker := NewBreaker(BreakerConfig {
 The `FailureInterpreter` determines which errors returned from the protected
 function should count as a failure with respect to the circuit breaker. As an
 example, the following failure interpreter will only count HTTP 500 errors as
-a circuit error.
+a circuit error (given an omitted definition of the type ProtocolError).
 
 ```go
 type ServerErrorFailureInterpreter struct{}
 
 func (fi *ServerErrorFailureInterpreter) ShouldTrip(err error) bool {
-	return err >= http.StatusInternalServerError
+	if perr, ok := err.(ProtocolError); ok {
+		return perr.StatusCode >= 500
+	}
+
+	return false
 }
 ```
 
