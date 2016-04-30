@@ -18,7 +18,10 @@ to transient faults such as:
 - resource or service being overcommitted
 - resource or service being temporarily unavailable
 
-These faults typically correct themselves after a short period of time.
+These faults typically correct themselves after a short period of time. You can
+read more about the pattern
+[here](https://msdn.microsoft.com/en-us/library/dn589784.aspx) and
+[here](http://martinfowler.com/bliki/CircuitBreaker.html).
 
 ## Example
 
