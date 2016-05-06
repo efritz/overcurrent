@@ -66,6 +66,23 @@ func (s *OvercurrentSuite) TestTimeoutTrip(c *C) {
 	c.Assert(cb.Call(fn), Equals, CircuitOpenError)
 }
 
+func (s *OvercurrentSuite) TimeoutDisabled(c *C) {
+	cb := NewBreaker(BreakerConfig{
+		InvocationTimeout:          0,
+		ResetTimeout:               250 * time.Millisecond,
+		HalfClosedRetryProbability: 1,
+		FailureInterpreter:         NewAnyErrorFailureInterpreter(),
+		TripCondition:              NewConsecutiveFailureTripCondition(5),
+	})
+
+	fn := func() error {
+		<-time.After(250 * time.Millisecond)
+		return nil
+	}
+
+	c.Assert(cb.Call(fn), Equals, nil)
+}
+
 func (s *OvercurrentSuite) TestHalfOpenFailure(c *C) {
 	cb := NewBreaker(BreakerConfig{
 		InvocationTimeout:          DefaultInvocationTimeout,
