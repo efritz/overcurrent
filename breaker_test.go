@@ -4,6 +4,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/efritz/backoff"
 	. "gopkg.in/check.v1"
 )
 
@@ -69,7 +70,7 @@ func (s *OvercurrentSuite) TestTimeoutTrip(c *C) {
 func (s *OvercurrentSuite) TestTimeoutDisabled(c *C) {
 	cb := NewBreaker(BreakerConfig{
 		InvocationTimeout:          0,
-		ResetTimeout:               250 * time.Millisecond,
+		ResetBackOff:               backoff.NewConstantBackOff(250 * time.Millisecond),
 		HalfClosedRetryProbability: 1,
 		FailureInterpreter:         NewAnyErrorFailureInterpreter(),
 		TripCondition:              NewConsecutiveFailureTripCondition(5),
@@ -86,7 +87,7 @@ func (s *OvercurrentSuite) TestTimeoutDisabled(c *C) {
 func (s *OvercurrentSuite) TestHalfOpenFailure(c *C) {
 	cb := NewBreaker(BreakerConfig{
 		InvocationTimeout:          DefaultInvocationTimeout,
-		ResetTimeout:               250 * time.Millisecond,
+		ResetBackOff:               backoff.NewConstantBackOff(250 * time.Millisecond),
 		HalfClosedRetryProbability: 1,
 		FailureInterpreter:         NewAnyErrorFailureInterpreter(),
 		TripCondition:              NewConsecutiveFailureTripCondition(5),
@@ -109,7 +110,7 @@ func (s *OvercurrentSuite) TestHalfOpenFailure(c *C) {
 func (s *OvercurrentSuite) TestHalfOpenReset(c *C) {
 	cb := NewBreaker(BreakerConfig{
 		InvocationTimeout:          DefaultInvocationTimeout,
-		ResetTimeout:               250 * time.Millisecond,
+		ResetBackOff:               backoff.NewConstantBackOff(250 * time.Millisecond),
 		HalfClosedRetryProbability: 1,
 		FailureInterpreter:         NewAnyErrorFailureInterpreter(),
 		TripCondition:              NewConsecutiveFailureTripCondition(5),
@@ -145,7 +146,7 @@ func (s *OvercurrentSuite) TestHalfOpenProbability(c *C) {
 	for i := 0; i < runs; i++ {
 		cb := NewBreaker(BreakerConfig{
 			InvocationTimeout:          DefaultInvocationTimeout,
-			ResetTimeout:               1 * time.Nanosecond,
+			ResetBackOff:               backoff.NewConstantBackOff(1 * time.Nanosecond),
 			HalfClosedRetryProbability: prob,
 			FailureInterpreter:         NewAnyErrorFailureInterpreter(),
 			TripCondition:              NewConsecutiveFailureTripCondition(1),
@@ -166,10 +167,46 @@ func (s *OvercurrentSuite) TestHalfOpenProbability(c *C) {
 	c.Assert(lower <= success && success <= upper, Equals, true)
 }
 
+func (s *OvercurrentSuite) TestResetBackOff(c *C) {
+	cb := NewBreaker(BreakerConfig{
+		InvocationTimeout:          DefaultInvocationTimeout,
+		ResetBackOff:               backoff.NewLinearBackOff(100*time.Millisecond, 50*time.Millisecond, time.Second),
+		HalfClosedRetryProbability: 1,
+		FailureInterpreter:         NewAnyErrorFailureInterpreter(),
+		TripCondition:              NewConsecutiveFailureTripCondition(5),
+	})
+
+	err := errors.New("Test error.")
+	fn1 := func() error { return err }
+	fn2 := func() error { return nil }
+
+	runTest := func() {
+		for i := 0; i < 5; i++ {
+			c.Assert(cb.Call(fn1), Equals, err)
+		}
+
+		c.Assert(cb.Call(fn1), Equals, CircuitOpenError)
+		<-time.After(100 * time.Millisecond)
+		c.Assert(cb.Call(fn1), Equals, err)
+		c.Assert(cb.Call(fn2), Equals, CircuitOpenError)
+		<-time.After(150 * time.Millisecond)
+		c.Assert(cb.Call(fn1), Equals, err)
+		c.Assert(cb.Call(fn2), Equals, CircuitOpenError)
+		<-time.After(200 * time.Millisecond)
+		c.Assert(cb.Call(fn1), Equals, err)
+		c.Assert(cb.Call(fn2), Equals, CircuitOpenError)
+		<-time.After(250 * time.Millisecond)
+		c.Assert(cb.Call(fn2), Equals, nil)
+	}
+
+	runTest()
+	runTest()
+}
+
 func (s *OvercurrentSuite) TestHardTrip(c *C) {
 	cb := NewBreaker(BreakerConfig{
 		InvocationTimeout:          DefaultInvocationTimeout,
-		ResetTimeout:               250 * time.Millisecond,
+		ResetBackOff:               backoff.NewConstantBackOff(250 * time.Millisecond),
 		HalfClosedRetryProbability: 1,
 		FailureInterpreter:         NewAnyErrorFailureInterpreter(),
 		TripCondition:              NewConsecutiveFailureTripCondition(1),

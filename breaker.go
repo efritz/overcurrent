@@ -4,9 +4,14 @@ import (
 	"errors"
 	"math/rand"
 	"time"
+
+	"github.com/efritz/backoff"
 )
 
-type CircuitState int
+type (
+	CircuitState int
+	BackOff      backoff.BackOff
+)
 
 const (
 	OpenState       CircuitState = iota // Failure state
@@ -29,12 +34,15 @@ type CircuitBreaker struct {
 	config BreakerConfig
 
 	hardTrip        bool
+	lastState       CircuitState
 	lastFailureTime *time.Time
+	resetTimeout    *time.Duration
 }
 
 func NewBreaker(config BreakerConfig) *CircuitBreaker {
 	return &CircuitBreaker{
-		config: config,
+		config:    config,
+		lastState: ClosedState,
 	}
 }
 
@@ -69,20 +77,6 @@ func (cb *CircuitBreaker) Reset() {
 	cb.recordSuccess()
 }
 
-func (cb *CircuitBreaker) state() CircuitState {
-	if !cb.config.TripCondition.ShouldTrip() {
-		return ClosedState
-	}
-
-	if cb.lastFailureTime != nil {
-		if time.Now().Sub(*cb.lastFailureTime) >= cb.config.ResetTimeout {
-			return HalfClosedState
-		}
-	}
-
-	return OpenState
-}
-
 func (cb *CircuitBreaker) shouldTry() bool {
 	if cb.hardTrip || cb.state() == OpenState {
 		return false
@@ -93,6 +87,31 @@ func (cb *CircuitBreaker) shouldTry() bool {
 	}
 
 	return true
+}
+
+func (cb *CircuitBreaker) state() CircuitState {
+	if !cb.config.TripCondition.ShouldTrip() {
+		cb.lastState = ClosedState
+		return cb.lastState
+	}
+
+	if cb.lastState == ClosedState {
+		cb.config.ResetBackOff.Reset()
+	}
+
+	if cb.lastState != OpenState {
+		cb.updateBackOff()
+	}
+
+	if cb.lastFailureTime != nil {
+		if time.Now().Sub(*cb.lastFailureTime) >= *cb.resetTimeout {
+			cb.lastState = HalfClosedState
+			return HalfClosedState
+		}
+	}
+
+	cb.lastState = OpenState
+	return OpenState
 }
 
 func (cb *CircuitBreaker) callWithTimeout(f func() error) error {
@@ -115,8 +134,11 @@ func (cb *CircuitBreaker) callWithTimeout(f func() error) error {
 }
 
 func (cb *CircuitBreaker) recordSuccess() {
-	cb.lastFailureTime = nil
 	cb.hardTrip = false
+	cb.lastFailureTime = nil
+	cb.resetTimeout = nil
+
+	cb.config.ResetBackOff.Reset()
 	cb.config.TripCondition.Success()
 }
 
@@ -124,4 +146,9 @@ func (cb *CircuitBreaker) recordFailure() {
 	now := time.Now()
 	cb.lastFailureTime = &now
 	cb.config.TripCondition.Failure()
+}
+
+func (cb *CircuitBreaker) updateBackOff() {
+	reset := cb.config.ResetBackOff.NextInterval()
+	cb.resetTimeout = &reset
 }

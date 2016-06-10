@@ -23,21 +23,30 @@ read more about the pattern
 [here](https://msdn.microsoft.com/en-us/library/dn589784.aspx) and
 [here](http://martinfowler.com/bliki/CircuitBreaker.html).
 
+This library depends on the [backoff](https://github.com/efritz/backoff) library,
+which defines structures for creating back-off interval generator.
+
 ## Example
 
 First, create an instance of a `Breaker` with the following customizable config
 parameters. The `InvocationTimeout` specifies how long a protected function can
-run for before returning an error (zero allows for unbounded runtime). The
-`ResetTimeout` specifies how long the circuit breaker stays in the open state
-until transitioning to the half-closed state. The `HalfClosedRetryProbability`
-specifies the probability that a request in the half-closed state will attempt
-to retry instead of immediately returning a `CircuitOpenError`.
+run for before returning an error (zero allows for unbounded runtime).
+
+The `ResetBackOff` specifies how long the circuit breaker stays in the open state
+until transitioning to the half-closed state. If a failure occurs while in the
+half-closed state, the circuit breaker will transition back to the open state, and
+the time spent before transitioning to the half-closed state may increase, depending
+on the implementation of the back-off interface.
+
+The `HalfClosedRetryProbability` specifies the probability that a request in the
+half-closed state will attempt to retry instead of immediately returning a
+`CircuitOpenError`.
 
 ```go
 breaker := NewBreaker(BreakerConfig {
 	return BreakerConfig{
 		InvocationTimeout:          50 * time.Milliecond,
-		ResetTimeout:               1 * time.Second,
+		ResetBackOff:               backoff.NewConstantBackOff(1 * time.Second),
 		HalfClosedRetryProbability: 0.1,
 		FailureInterpreter:         NewAnyErrorFailureInterpreter(),
 		TripCondition:              NewConsecutiveFailureTripCondition(5),
