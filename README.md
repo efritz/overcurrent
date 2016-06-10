@@ -121,6 +121,13 @@ breaker.Trip()
 breaker.Reset()
 ```
 
+*Caveat:* If the runtime of a call exceeds the `InvocationTimeout` parameter,
+the return value of the function will be ignored, but the function execution
+will not be *halted*. This may be a cause of leaking resources in some cases,
+such as network dialing. In these cases, it is better to consider a timeout
+as part of the function being called, and make sure the failure interpreter
+is aware of a timeout possibility from within the function.
+
 ## License
 
 Copyright (c) 2016 Eric Fritz
