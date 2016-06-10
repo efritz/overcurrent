@@ -18,7 +18,7 @@ var (
 //
 //
 
-type BreakerConfig struct {
+type CircuitBreakerConfig struct {
 	InvocationTimeout          time.Duration
 	ResetBackOff               BackOff
 	HalfClosedRetryProbability float64
@@ -26,8 +26,11 @@ type BreakerConfig struct {
 	TripCondition              TripCondition
 }
 
-func NewBreakerConfig() BreakerConfig {
-	return BreakerConfig{
+// Creates a circuit breaker config usign the default values for timeouts
+// and half-closed retry probability, an any-error failure interpreter, and
+// a consecutive-failure trip condition (with a value of five).
+func DefaultCircuitBreakerConfig() *CircuitBreakerConfig {
+	return &CircuitBreakerConfig{
 		InvocationTimeout:          DefaultInvocationTimeout,
 		ResetBackOff:               DefaultResetBackOff,
 		HalfClosedRetryProbability: DefaultHalfClosedRetryProbability,

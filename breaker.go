@@ -31,15 +31,14 @@ var (
 // After a certain failure threshold is reached, future invocations will instead
 // return a CircuitOpenError instead of attempting to invoke the function again.
 type CircuitBreaker struct {
-	config BreakerConfig
-
+	config          *CircuitBreakerConfig
 	hardTrip        bool
 	lastState       CircuitState
 	lastFailureTime *time.Time
 	resetTimeout    *time.Duration
 }
 
-func NewBreaker(config BreakerConfig) *CircuitBreaker {
+func NewCircuitBreaker(config *CircuitBreakerConfig) *CircuitBreaker {
 	return &CircuitBreaker{
 		config:    config,
 		lastState: ClosedState,

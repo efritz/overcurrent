@@ -9,7 +9,7 @@ import (
 )
 
 func (s *OvercurrentSuite) TestSuccess(c *C) {
-	cb := NewBreaker(NewBreakerConfig())
+	cb := NewCircuitBreaker(DefaultCircuitBreakerConfig())
 	fn := func() error {
 		return nil
 	}
@@ -20,7 +20,7 @@ func (s *OvercurrentSuite) TestSuccess(c *C) {
 func (s *OvercurrentSuite) TestNaturalError(c *C) {
 	err := errors.New("Test error.")
 
-	cb := NewBreaker(NewBreakerConfig())
+	cb := NewCircuitBreaker(DefaultCircuitBreakerConfig())
 	fn := func() error {
 		return err
 	}
@@ -31,7 +31,7 @@ func (s *OvercurrentSuite) TestNaturalError(c *C) {
 func (s *OvercurrentSuite) TestNaturalErrorTrip(c *C) {
 	err := errors.New("Test error.")
 
-	cb := NewBreaker(NewBreakerConfig())
+	cb := NewCircuitBreaker(DefaultCircuitBreakerConfig())
 	fn := func() error {
 		return err
 	}
@@ -44,7 +44,7 @@ func (s *OvercurrentSuite) TestNaturalErrorTrip(c *C) {
 }
 
 func (s *OvercurrentSuite) TestTimeout(c *C) {
-	cb := NewBreaker(NewBreakerConfig())
+	cb := NewCircuitBreaker(DefaultCircuitBreakerConfig())
 	fn := func() error {
 		<-time.After(250 * time.Millisecond)
 		return nil
@@ -54,7 +54,7 @@ func (s *OvercurrentSuite) TestTimeout(c *C) {
 }
 
 func (s *OvercurrentSuite) TestTimeoutTrip(c *C) {
-	cb := NewBreaker(NewBreakerConfig())
+	cb := NewCircuitBreaker(DefaultCircuitBreakerConfig())
 	fn := func() error {
 		<-time.After(250 * time.Millisecond)
 		return nil
@@ -68,7 +68,7 @@ func (s *OvercurrentSuite) TestTimeoutTrip(c *C) {
 }
 
 func (s *OvercurrentSuite) TestTimeoutDisabled(c *C) {
-	cb := NewBreaker(BreakerConfig{
+	cb := NewCircuitBreaker(&CircuitBreakerConfig{
 		InvocationTimeout:          0,
 		ResetBackOff:               backoff.NewConstantBackOff(250 * time.Millisecond),
 		HalfClosedRetryProbability: 1,
@@ -85,7 +85,7 @@ func (s *OvercurrentSuite) TestTimeoutDisabled(c *C) {
 }
 
 func (s *OvercurrentSuite) TestHalfOpenFailure(c *C) {
-	cb := NewBreaker(BreakerConfig{
+	cb := NewCircuitBreaker(&CircuitBreakerConfig{
 		InvocationTimeout:          DefaultInvocationTimeout,
 		ResetBackOff:               backoff.NewConstantBackOff(250 * time.Millisecond),
 		HalfClosedRetryProbability: 1,
@@ -108,7 +108,7 @@ func (s *OvercurrentSuite) TestHalfOpenFailure(c *C) {
 }
 
 func (s *OvercurrentSuite) TestHalfOpenReset(c *C) {
-	cb := NewBreaker(BreakerConfig{
+	cb := NewCircuitBreaker(&CircuitBreakerConfig{
 		InvocationTimeout:          DefaultInvocationTimeout,
 		ResetBackOff:               backoff.NewConstantBackOff(250 * time.Millisecond),
 		HalfClosedRetryProbability: 1,
@@ -144,7 +144,7 @@ func (s *OvercurrentSuite) TestHalfOpenProbability(c *C) {
 	}
 
 	for i := 0; i < runs; i++ {
-		cb := NewBreaker(BreakerConfig{
+		cb := NewCircuitBreaker(&CircuitBreakerConfig{
 			InvocationTimeout:          DefaultInvocationTimeout,
 			ResetBackOff:               backoff.NewConstantBackOff(1 * time.Nanosecond),
 			HalfClosedRetryProbability: prob,
@@ -168,7 +168,7 @@ func (s *OvercurrentSuite) TestHalfOpenProbability(c *C) {
 }
 
 func (s *OvercurrentSuite) TestResetBackOff(c *C) {
-	cb := NewBreaker(BreakerConfig{
+	cb := NewCircuitBreaker(&CircuitBreakerConfig{
 		InvocationTimeout:          DefaultInvocationTimeout,
 		ResetBackOff:               backoff.NewLinearBackOff(100*time.Millisecond, 50*time.Millisecond, time.Second),
 		HalfClosedRetryProbability: 1,
@@ -204,7 +204,7 @@ func (s *OvercurrentSuite) TestResetBackOff(c *C) {
 }
 
 func (s *OvercurrentSuite) TestHardTrip(c *C) {
-	cb := NewBreaker(BreakerConfig{
+	cb := NewCircuitBreaker(&CircuitBreakerConfig{
 		InvocationTimeout:          DefaultInvocationTimeout,
 		ResetBackOff:               backoff.NewConstantBackOff(250 * time.Millisecond),
 		HalfClosedRetryProbability: 1,
@@ -228,7 +228,7 @@ func (s *OvercurrentSuite) TestHardTrip(c *C) {
 }
 
 func (s *OvercurrentSuite) TestHardReset(c *C) {
-	cb := NewBreaker(NewBreakerConfig())
+	cb := NewCircuitBreaker(DefaultCircuitBreakerConfig())
 
 	err := errors.New("Test error.")
 	fn1 := func() error { return err }

@@ -43,14 +43,13 @@ half-closed state will attempt to retry instead of immediately returning a
 `CircuitOpenError`.
 
 ```go
-breaker := NewBreaker(BreakerConfig {
-	return BreakerConfig{
-		InvocationTimeout:          50 * time.Milliecond,
-		ResetBackOff:               backoff.NewConstantBackOff(1 * time.Second),
-		HalfClosedRetryProbability: 0.1,
-		FailureInterpreter:         NewAnyErrorFailureInterpreter(),
-		TripCondition:              NewConsecutiveFailureTripCondition(5),
-	})
+breaker := NewCircuitBreaker(&CircuitBreakerConfig {
+	InvocationTimeout:          50 * time.Milliecond,
+	ResetBackOff:               backoff.NewConstantBackOff(1 * time.Second),
+	HalfClosedRetryProbability: 0.1,
+	FailureInterpreter:         NewAnyErrorFailureInterpreter(),
+	TripCondition:              NewConsecutiveFailureTripCondition(5),
+})
 ```
 
 The `FailureInterpreter` determines which errors returned from the protected
