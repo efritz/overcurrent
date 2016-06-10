@@ -7,7 +7,6 @@ import (
 )
 
 type CircuitState int
-type CircuitEvent int
 
 const (
 	OpenState       CircuitState = iota // Failure state
