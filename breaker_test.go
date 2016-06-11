@@ -70,7 +70,7 @@ func (s *OvercurrentSuite) TestTimeoutTrip(c *C) {
 func (s *OvercurrentSuite) TestTimeoutDisabled(c *C) {
 	cb := NewCircuitBreaker(&CircuitBreakerConfig{
 		InvocationTimeout:          0,
-		ResetBackOff:               backoff.NewConstantBackOff(250 * time.Millisecond),
+		ResetBackoff:               backoff.NewConstantBackoff(250 * time.Millisecond),
 		HalfClosedRetryProbability: 1,
 		FailureInterpreter:         NewAnyErrorFailureInterpreter(),
 		TripCondition:              NewConsecutiveFailureTripCondition(5),
@@ -87,7 +87,7 @@ func (s *OvercurrentSuite) TestTimeoutDisabled(c *C) {
 func (s *OvercurrentSuite) TestHalfOpenFailure(c *C) {
 	cb := NewCircuitBreaker(&CircuitBreakerConfig{
 		InvocationTimeout:          DefaultInvocationTimeout,
-		ResetBackOff:               backoff.NewConstantBackOff(250 * time.Millisecond),
+		ResetBackoff:               backoff.NewConstantBackoff(250 * time.Millisecond),
 		HalfClosedRetryProbability: 1,
 		FailureInterpreter:         NewAnyErrorFailureInterpreter(),
 		TripCondition:              NewConsecutiveFailureTripCondition(5),
@@ -110,7 +110,7 @@ func (s *OvercurrentSuite) TestHalfOpenFailure(c *C) {
 func (s *OvercurrentSuite) TestHalfOpenReset(c *C) {
 	cb := NewCircuitBreaker(&CircuitBreakerConfig{
 		InvocationTimeout:          DefaultInvocationTimeout,
-		ResetBackOff:               backoff.NewConstantBackOff(250 * time.Millisecond),
+		ResetBackoff:               backoff.NewConstantBackoff(250 * time.Millisecond),
 		HalfClosedRetryProbability: 1,
 		FailureInterpreter:         NewAnyErrorFailureInterpreter(),
 		TripCondition:              NewConsecutiveFailureTripCondition(5),
@@ -146,7 +146,7 @@ func (s *OvercurrentSuite) TestHalfOpenProbability(c *C) {
 	for i := 0; i < runs; i++ {
 		cb := NewCircuitBreaker(&CircuitBreakerConfig{
 			InvocationTimeout:          DefaultInvocationTimeout,
-			ResetBackOff:               backoff.NewConstantBackOff(1 * time.Nanosecond),
+			ResetBackoff:               backoff.NewConstantBackoff(1 * time.Nanosecond),
 			HalfClosedRetryProbability: prob,
 			FailureInterpreter:         NewAnyErrorFailureInterpreter(),
 			TripCondition:              NewConsecutiveFailureTripCondition(1),
@@ -167,10 +167,10 @@ func (s *OvercurrentSuite) TestHalfOpenProbability(c *C) {
 	c.Assert(lower <= success && success <= upper, Equals, true)
 }
 
-func (s *OvercurrentSuite) TestResetBackOff(c *C) {
+func (s *OvercurrentSuite) TestResetBackoff(c *C) {
 	cb := NewCircuitBreaker(&CircuitBreakerConfig{
 		InvocationTimeout:          DefaultInvocationTimeout,
-		ResetBackOff:               backoff.NewLinearBackOff(100*time.Millisecond, 50*time.Millisecond, time.Second),
+		ResetBackoff:               backoff.NewLinearBackoff(100*time.Millisecond, 50*time.Millisecond, time.Second),
 		HalfClosedRetryProbability: 1,
 		FailureInterpreter:         NewAnyErrorFailureInterpreter(),
 		TripCondition:              NewConsecutiveFailureTripCondition(5),
@@ -206,7 +206,7 @@ func (s *OvercurrentSuite) TestResetBackOff(c *C) {
 func (s *OvercurrentSuite) TestHardTrip(c *C) {
 	cb := NewCircuitBreaker(&CircuitBreakerConfig{
 		InvocationTimeout:          DefaultInvocationTimeout,
-		ResetBackOff:               backoff.NewConstantBackOff(250 * time.Millisecond),
+		ResetBackoff:               backoff.NewConstantBackoff(250 * time.Millisecond),
 		HalfClosedRetryProbability: 1,
 		FailureInterpreter:         NewAnyErrorFailureInterpreter(),
 		TripCondition:              NewConsecutiveFailureTripCondition(1),

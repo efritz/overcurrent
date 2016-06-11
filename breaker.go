@@ -10,7 +10,7 @@ import (
 
 type (
 	CircuitState int
-	BackOff      backoff.BackOff
+	Backoff      backoff.Backoff
 )
 
 const (
@@ -95,11 +95,11 @@ func (cb *CircuitBreaker) state() CircuitState {
 	}
 
 	if cb.lastState == ClosedState {
-		cb.config.ResetBackOff.Reset()
+		cb.config.ResetBackoff.Reset()
 	}
 
 	if cb.lastState != OpenState {
-		cb.updateBackOff()
+		cb.updateBackoff()
 	}
 
 	if cb.lastFailureTime != nil {
@@ -137,7 +137,7 @@ func (cb *CircuitBreaker) recordSuccess() {
 	cb.lastFailureTime = nil
 	cb.resetTimeout = nil
 
-	cb.config.ResetBackOff.Reset()
+	cb.config.ResetBackoff.Reset()
 	cb.config.TripCondition.Success()
 }
 
@@ -147,7 +147,7 @@ func (cb *CircuitBreaker) recordFailure() {
 	cb.config.TripCondition.Failure()
 }
 
-func (cb *CircuitBreaker) updateBackOff() {
-	reset := cb.config.ResetBackOff.NextInterval()
+func (cb *CircuitBreaker) updateBackoff() {
+	reset := cb.config.ResetBackoff.NextInterval()
 	cb.resetTimeout = &reset
 }

@@ -17,7 +17,7 @@ const (
 type CircuitBreakerConfig struct {
 	InvocationTimeout          time.Duration
 	HalfClosedRetryProbability float64
-	ResetBackOff               BackOff
+	ResetBackoff               Backoff
 	FailureInterpreter         FailureInterpreter
 	TripCondition              TripCondition
 }
@@ -30,7 +30,7 @@ func DefaultCircuitBreakerConfig() *CircuitBreakerConfig {
 	return &CircuitBreakerConfig{
 		InvocationTimeout:          DefaultInvocationTimeout,
 		HalfClosedRetryProbability: DefaultHalfClosedRetryProbability,
-		ResetBackOff:               backoff.NewConstantBackOff(1000 * time.Millisecond),
+		ResetBackoff:               backoff.NewConstantBackoff(1000 * time.Millisecond),
 		FailureInterpreter:         NewAnyErrorFailureInterpreter(),
 		TripCondition:              NewConsecutiveFailureTripCondition(5),
 	}
