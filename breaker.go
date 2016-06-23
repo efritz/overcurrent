@@ -34,7 +34,7 @@ var (
 
 // CircuitBreaker protects the invocation of a function and monitors failures.
 // After a certain failure threshold is reached, future invocations will instead
-// return a CircuitOpenError instead of attempting to invoke the function again.
+// return an ErrErrCircuitOpen instead of attempting to invoke the function again.
 type CircuitBreaker struct {
 	config          *CircuitBreakerConfig
 	hardTrip        bool
@@ -58,7 +58,7 @@ func NewCircuitBreaker(config *CircuitBreakerConfig) *CircuitBreaker {
 // value is returned.
 func (cb *CircuitBreaker) Call(f func() error) error {
 	if !cb.shouldTry() {
-		return CircuitOpenError
+		return ErrCircuitOpen
 	}
 
 	if err := cb.callWithTimeout(f); err != nil && cb.config.FailureInterpreter.ShouldTrip(err) {
@@ -137,7 +137,7 @@ func (cb *CircuitBreaker) callWithTimeout(f func() error) error {
 	case err := <-c:
 		return err
 	case <-time.After(cb.config.InvocationTimeout):
-		return InvocationTimeoutError
+		return ErrInvocationTimeout
 	}
 }
 

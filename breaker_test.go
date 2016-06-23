@@ -40,7 +40,7 @@ func (s *OvercurrentSuite) TestNaturalErrorTrip(c *C) {
 		c.Assert(cb.Call(fn), Equals, err)
 	}
 
-	c.Assert(cb.Call(fn), Equals, CircuitOpenError)
+	c.Assert(cb.Call(fn), Equals, ErrCircuitOpen)
 }
 
 func (s *OvercurrentSuite) TestTimeout(c *C) {
@@ -50,7 +50,7 @@ func (s *OvercurrentSuite) TestTimeout(c *C) {
 		return nil
 	}
 
-	c.Assert(cb.Call(fn), Equals, InvocationTimeoutError)
+	c.Assert(cb.Call(fn), Equals, ErrInvocationTimeout)
 }
 
 func (s *OvercurrentSuite) TestTimeoutTrip(c *C) {
@@ -61,10 +61,10 @@ func (s *OvercurrentSuite) TestTimeoutTrip(c *C) {
 	}
 
 	for i := 0; i < 5; i++ {
-		c.Assert(cb.Call(fn), Equals, InvocationTimeoutError)
+		c.Assert(cb.Call(fn), Equals, ErrInvocationTimeout)
 	}
 
-	c.Assert(cb.Call(fn), Equals, CircuitOpenError)
+	c.Assert(cb.Call(fn), Equals, ErrCircuitOpen)
 }
 
 func (s *OvercurrentSuite) TestTimeoutDisabled(c *C) {
@@ -101,10 +101,10 @@ func (s *OvercurrentSuite) TestHalfOpenFailure(c *C) {
 		c.Assert(cb.Call(fn1), Equals, err)
 	}
 
-	c.Assert(cb.Call(fn1), Equals, CircuitOpenError)
+	c.Assert(cb.Call(fn1), Equals, ErrCircuitOpen)
 	<-time.After(250 * time.Millisecond)
 	c.Assert(cb.Call(fn1), Equals, err)
-	c.Assert(cb.Call(fn2), Equals, CircuitOpenError)
+	c.Assert(cb.Call(fn2), Equals, ErrCircuitOpen)
 }
 
 func (s *OvercurrentSuite) TestHalfOpenReset(c *C) {
@@ -124,7 +124,7 @@ func (s *OvercurrentSuite) TestHalfOpenReset(c *C) {
 		c.Assert(cb.Call(fn1), Equals, err)
 	}
 
-	c.Assert(cb.Call(fn1), Equals, CircuitOpenError)
+	c.Assert(cb.Call(fn1), Equals, ErrCircuitOpen)
 	<-time.After(250 * time.Millisecond)
 	c.Assert(cb.Call(fn2), Equals, nil)
 }
@@ -155,7 +155,7 @@ func (s *OvercurrentSuite) TestHalfOpenProbability(c *C) {
 		cb.Call(fn1)
 		<-time.After(1 * time.Nanosecond)
 
-		if cb.Call(fn2) == CircuitOpenError {
+		if cb.Call(fn2) == ErrCircuitOpen {
 			failure++
 		}
 	}
@@ -185,16 +185,16 @@ func (s *OvercurrentSuite) TestResetBackoff(c *C) {
 			c.Assert(cb.Call(fn1), Equals, err)
 		}
 
-		c.Assert(cb.Call(fn1), Equals, CircuitOpenError)
+		c.Assert(cb.Call(fn1), Equals, ErrCircuitOpen)
 		<-time.After(100 * time.Millisecond)
 		c.Assert(cb.Call(fn1), Equals, err)
-		c.Assert(cb.Call(fn2), Equals, CircuitOpenError)
+		c.Assert(cb.Call(fn2), Equals, ErrCircuitOpen)
 		<-time.After(150 * time.Millisecond)
 		c.Assert(cb.Call(fn1), Equals, err)
-		c.Assert(cb.Call(fn2), Equals, CircuitOpenError)
+		c.Assert(cb.Call(fn2), Equals, ErrCircuitOpen)
 		<-time.After(200 * time.Millisecond)
 		c.Assert(cb.Call(fn1), Equals, err)
-		c.Assert(cb.Call(fn2), Equals, CircuitOpenError)
+		c.Assert(cb.Call(fn2), Equals, ErrCircuitOpen)
 		<-time.After(250 * time.Millisecond)
 		c.Assert(cb.Call(fn2), Equals, nil)
 	}
@@ -219,9 +219,9 @@ func (s *OvercurrentSuite) TestHardTrip(c *C) {
 	c.Assert(cb.Call(fn), Equals, nil)
 	cb.Trip()
 
-	c.Assert(cb.Call(fn), Equals, CircuitOpenError)
+	c.Assert(cb.Call(fn), Equals, ErrCircuitOpen)
 	<-time.After(250 * time.Millisecond)
-	c.Assert(cb.Call(fn), Equals, CircuitOpenError)
+	c.Assert(cb.Call(fn), Equals, ErrCircuitOpen)
 
 	cb.Reset()
 	c.Assert(cb.Call(fn), Equals, nil)
@@ -238,7 +238,7 @@ func (s *OvercurrentSuite) TestHardReset(c *C) {
 		c.Assert(cb.Call(fn1), Equals, err)
 	}
 
-	c.Assert(cb.Call(fn2), Equals, CircuitOpenError)
+	c.Assert(cb.Call(fn2), Equals, ErrCircuitOpen)
 
 	cb.Reset()
 	c.Assert(cb.Call(fn2), Equals, nil)
