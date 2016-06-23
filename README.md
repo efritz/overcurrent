@@ -93,9 +93,9 @@ err := breaker.Call(func() error {
 
 if err == nil {
 	// Success
-} else if err == InvocationTimeoutError {
+} else if err == ErrInvocationTimeout {
 	// Took too long
-} else if err == CircuitOpenError {
+} else if err == ErrCircuitOpen {
 	// Not attempted, in failure mode
 } else {
 	// Unsuccessful, error is HTTP error

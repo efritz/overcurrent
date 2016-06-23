@@ -23,18 +23,30 @@ type TripCondition interface {
 //
 //
 
+// ConsecutiveFailureTripCondition is a trip condition that trips the circuit
+// breaker after a configurable number of failures occur in a row. A single
+// successful call will break the failure chain.
 type ConsecutiveFailureTripCondition struct {
 	count     int
 	threshold int
 }
 
-func (tc *ConsecutiveFailureTripCondition) Failure()         { tc.count++ }
-func (tc *ConsecutiveFailureTripCondition) Success()         { tc.count = 0 }
-func (tc *ConsecutiveFailureTripCondition) ShouldTrip() bool { return tc.count >= tc.threshold }
+// Failure increases the failure count.
+func (tc *ConsecutiveFailureTripCondition) Failure() {
+	tc.count++
+}
 
-// A trip condition that trips the circuit breaker after a configurable number
-// of failures occur in a row. A single successful call will break the failure
-// chain.
+// Success resets the failure count.
+func (tc *ConsecutiveFailureTripCondition) Success() {
+	tc.count = 0
+}
+
+// ShouldTrip returns true if the failure count meets or exceeds the failure threshold.
+func (tc *ConsecutiveFailureTripCondition) ShouldTrip() bool {
+	return tc.count >= tc.threshold
+}
+
+// NewConsecutiveFailureTripCondition creates a new ConsecutiveFailureTripCondition.
 func NewConsecutiveFailureTripCondition(threshold int) *ConsecutiveFailureTripCondition {
 	return &ConsecutiveFailureTripCondition{
 		count:     0,
@@ -45,15 +57,27 @@ func NewConsecutiveFailureTripCondition(threshold int) *ConsecutiveFailureTripCo
 //
 //
 
+// WindowFailureTripCondition is a trip condition that trips the circuit
+// breaker after a configurable number of failures occur within a configurable
+// rolling window. The circuit breaker will remain in the open state until
+// e time has elapsed for a failure to fall out of recent memory.
 type WindowFailureTripCondition struct {
 	log       []time.Time
 	window    time.Duration
 	threshold int
 }
 
-func (tc *WindowFailureTripCondition) Failure() { tc.log = append(tc.log, time.Now()) }
-func (tc *WindowFailureTripCondition) Success() {}
+// Failure logs the time of this failure.
+func (tc *WindowFailureTripCondition) Failure() {
+	tc.log = append(tc.log, time.Now())
+}
 
+// Success is a no-op.
+func (tc *WindowFailureTripCondition) Success() {
+}
+
+// ShouldTrip returns true if the number of logged failures within the window
+// meets or exceeds the failure threshold.
 func (tc *WindowFailureTripCondition) ShouldTrip() bool {
 	i := 0
 	for i < len(tc.log) && time.Now().Sub(tc.log[i]) > tc.window {
@@ -67,10 +91,7 @@ func (tc *WindowFailureTripCondition) ShouldTrip() bool {
 	return len(tc.log) >= tc.threshold
 }
 
-// A trip condition that trips the circuit breaker after a configurable number
-// of failures occur within a configurable rolling window. The circuit breaker
-// will remain in the open state until enough time has elapsed for a failure to
-// fall out of recent memory.
+// NewWindowFailureTripCondition creates a new WindowFailureTripCondition.
 func NewWindowFailureTripCondition(window time.Duration, threshold int) *WindowFailureTripCondition {
 	return &WindowFailureTripCondition{
 		log:       []time.Time{},
