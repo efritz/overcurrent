@@ -22,11 +22,11 @@ const (
 
 var (
 	// ErrCircuitOpen occurs when the Call method fails immediatley.
-	ErrCircuitOpen = errors.New("Circuit is open.")
+	ErrCircuitOpen = errors.New("Circuit is open")
 
 	// ErrInvocationTimeout occurs when the method invoked by Call
 	// takes too long to execute.
-	ErrInvocationTimeout = errors.New("Invocation has timed out.")
+	ErrInvocationTimeout = errors.New("Invocation has timed out")
 )
 
 //
