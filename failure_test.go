@@ -2,14 +2,19 @@ package overcurrent
 
 import (
 	"errors"
+	"testing"
 
-	. "gopkg.in/check.v1"
+	. "github.com/onsi/gomega"
 )
 
-func (s *OvercurrentSuite) TestAnyError(c *C) {
-	afi := NewAnyErrorFailureInterpreter()
-	err := errors.New("Test error.")
+type FailureSuite struct{}
 
-	c.Assert(afi.ShouldTrip(nil), Equals, true)
-	c.Assert(afi.ShouldTrip(err), Equals, true)
+func (s *FailureSuite) TestAnyError(t *testing.T) {
+	var (
+		afi = NewAnyErrorFailureInterpreter()
+		err = errors.New("test error")
+	)
+
+	Expect(afi.ShouldTrip(nil)).To(BeTrue())
+	Expect(afi.ShouldTrip(err)).To(BeTrue())
 }

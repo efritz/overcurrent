@@ -1,35 +1,38 @@
 package overcurrent
 
 import (
-	"errors"
+	"fmt"
+	"testing"
 	"time"
 
 	"github.com/efritz/backoff"
-	. "gopkg.in/check.v1"
+	. "github.com/onsi/gomega"
 )
 
-func (s *OvercurrentSuite) TestSuccess(c *C) {
+type BreakerSuite struct{}
+
+func (s *BreakerSuite) TestSuccess(t *testing.T) {
 	cb := NewCircuitBreaker(DefaultCircuitBreakerConfig())
 	fn := func() error {
 		return nil
 	}
 
-	c.Assert(cb.Call(fn), Equals, nil)
+	Expect(cb.Call(fn)).To(BeNil())
 }
 
-func (s *OvercurrentSuite) TestNaturalError(c *C) {
-	err := errors.New("Test error.")
+func (s *BreakerSuite) TestNaturalError(t *testing.T) {
+	err := fmt.Errorf("test error")
 
 	cb := NewCircuitBreaker(DefaultCircuitBreakerConfig())
 	fn := func() error {
 		return err
 	}
 
-	c.Assert(cb.Call(fn), Equals, err)
+	Expect(cb.Call(fn)).To(Equal(err))
 }
 
-func (s *OvercurrentSuite) TestNaturalErrorTrip(c *C) {
-	err := errors.New("Test error.")
+func (s *BreakerSuite) TestNaturalErrorTrip(t *testing.T) {
+	err := fmt.Errorf("test error")
 
 	cb := NewCircuitBreaker(DefaultCircuitBreakerConfig())
 	fn := func() error {
@@ -37,23 +40,23 @@ func (s *OvercurrentSuite) TestNaturalErrorTrip(c *C) {
 	}
 
 	for i := 0; i < 5; i++ {
-		c.Assert(cb.Call(fn), Equals, err)
+		Expect(cb.Call(fn)).To(Equal(err))
 	}
 
-	c.Assert(cb.Call(fn), Equals, ErrCircuitOpen)
+	Expect(cb.Call(fn)).To(Equal(ErrCircuitOpen))
 }
 
-func (s *OvercurrentSuite) TestTimeout(c *C) {
+func (s *BreakerSuite) TestTimeout(t *testing.T) {
 	cb := NewCircuitBreaker(DefaultCircuitBreakerConfig())
 	fn := func() error {
 		<-time.After(250 * time.Millisecond)
 		return nil
 	}
 
-	c.Assert(cb.Call(fn), Equals, ErrInvocationTimeout)
+	Expect(cb.Call(fn)).To(Equal(ErrInvocationTimeout))
 }
 
-func (s *OvercurrentSuite) TestTimeoutTrip(c *C) {
+func (s *BreakerSuite) TestTimeoutTrip(t *testing.T) {
 	cb := NewCircuitBreaker(DefaultCircuitBreakerConfig())
 	fn := func() error {
 		<-time.After(250 * time.Millisecond)
@@ -61,13 +64,13 @@ func (s *OvercurrentSuite) TestTimeoutTrip(c *C) {
 	}
 
 	for i := 0; i < 5; i++ {
-		c.Assert(cb.Call(fn), Equals, ErrInvocationTimeout)
+		Expect(cb.Call(fn)).To(Equal(ErrInvocationTimeout))
 	}
 
-	c.Assert(cb.Call(fn), Equals, ErrCircuitOpen)
+	Expect(cb.Call(fn)).To(Equal(ErrCircuitOpen))
 }
 
-func (s *OvercurrentSuite) TestTimeoutDisabled(c *C) {
+func (s *BreakerSuite) TestTimeoutDisabled(t *testing.T) {
 	cb := NewCircuitBreaker(&CircuitBreakerConfig{
 		InvocationTimeout:          0,
 		ResetBackoff:               backoff.NewConstantBackoff(250 * time.Millisecond),
@@ -81,10 +84,10 @@ func (s *OvercurrentSuite) TestTimeoutDisabled(c *C) {
 		return nil
 	}
 
-	c.Assert(cb.Call(fn), Equals, nil)
+	Expect(cb.Call(fn)).To(BeNil())
 }
 
-func (s *OvercurrentSuite) TestHalfOpenFailure(c *C) {
+func (s *BreakerSuite) TestHalfOpenFailure(t *testing.T) {
 	cb := NewCircuitBreaker(&CircuitBreakerConfig{
 		InvocationTimeout:          DefaultInvocationTimeout,
 		ResetBackoff:               backoff.NewConstantBackoff(250 * time.Millisecond),
@@ -93,21 +96,21 @@ func (s *OvercurrentSuite) TestHalfOpenFailure(c *C) {
 		TripCondition:              NewConsecutiveFailureTripCondition(5),
 	})
 
-	err := errors.New("Test error.")
+	err := fmt.Errorf("test error")
 	fn1 := func() error { return err }
 	fn2 := func() error { return nil }
 
 	for i := 0; i < 5; i++ {
-		c.Assert(cb.Call(fn1), Equals, err)
+		Expect(cb.Call(fn1)).To(Equal(err))
 	}
 
-	c.Assert(cb.Call(fn1), Equals, ErrCircuitOpen)
+	Expect(cb.Call(fn1)).To(Equal(ErrCircuitOpen))
 	<-time.After(250 * time.Millisecond)
-	c.Assert(cb.Call(fn1), Equals, err)
-	c.Assert(cb.Call(fn2), Equals, ErrCircuitOpen)
+	Expect(cb.Call(fn1)).To(Equal(err))
+	Expect(cb.Call(fn2)).To(Equal(ErrCircuitOpen))
 }
 
-func (s *OvercurrentSuite) TestHalfOpenReset(c *C) {
+func (s *BreakerSuite) TestHalfOpenReset(t *testing.T) {
 	cb := NewCircuitBreaker(&CircuitBreakerConfig{
 		InvocationTimeout:          DefaultInvocationTimeout,
 		ResetBackoff:               backoff.NewConstantBackoff(250 * time.Millisecond),
@@ -116,20 +119,20 @@ func (s *OvercurrentSuite) TestHalfOpenReset(c *C) {
 		TripCondition:              NewConsecutiveFailureTripCondition(5),
 	})
 
-	err := errors.New("Test error.")
+	err := fmt.Errorf("test error")
 	fn1 := func() error { return err }
 	fn2 := func() error { return nil }
 
 	for i := 0; i < 5; i++ {
-		c.Assert(cb.Call(fn1), Equals, err)
+		Expect(cb.Call(fn1)).To(Equal(err))
 	}
 
-	c.Assert(cb.Call(fn1), Equals, ErrCircuitOpen)
+	Expect(cb.Call(fn1)).To(Equal(ErrCircuitOpen))
 	<-time.After(250 * time.Millisecond)
-	c.Assert(cb.Call(fn2), Equals, nil)
+	Expect(cb.Call(fn2)).To(BeNil())
 }
 
-func (s *OvercurrentSuite) TestHalfOpenProbability(c *C) {
+func (s *BreakerSuite) TestHalfOpenProbability(t *testing.T) {
 	runs := 5000
 	prob := .25
 	dist := .01
@@ -137,7 +140,7 @@ func (s *OvercurrentSuite) TestHalfOpenProbability(c *C) {
 	success := 0
 	failure := 0
 
-	fn1 := func() error { return errors.New("Test error.") }
+	fn1 := func() error { return fmt.Errorf("test error") }
 	fn2 := func() error {
 		success++
 		return nil
@@ -163,11 +166,12 @@ func (s *OvercurrentSuite) TestHalfOpenProbability(c *C) {
 	lower := int(float64(runs)*prob - float64(runs)*dist)
 	upper := int(float64(runs)*prob + float64(runs)*dist)
 
-	c.Assert(success+failure, Equals, runs)
-	c.Assert(lower <= success && success <= upper, Equals, true)
+	Expect(success + failure).To(Equal(runs))
+	Expect(success).To(BeNumerically(">=", lower))
+	Expect(success).To(BeNumerically("<=", upper))
 }
 
-func (s *OvercurrentSuite) TestResetBackoff(c *C) {
+func (s *BreakerSuite) TestResetBackoff(t *testing.T) {
 	cb := NewCircuitBreaker(&CircuitBreakerConfig{
 		InvocationTimeout:          DefaultInvocationTimeout,
 		ResetBackoff:               backoff.NewLinearBackoff(100*time.Millisecond, 50*time.Millisecond, time.Second),
@@ -176,34 +180,37 @@ func (s *OvercurrentSuite) TestResetBackoff(c *C) {
 		TripCondition:              NewConsecutiveFailureTripCondition(5),
 	})
 
-	err := errors.New("Test error.")
+	err := fmt.Errorf("test error")
 	fn1 := func() error { return err }
 	fn2 := func() error { return nil }
 
 	runTest := func() {
 		for i := 0; i < 5; i++ {
-			c.Assert(cb.Call(fn1), Equals, err)
+			Expect(cb.Call(fn1)).To(Equal(err))
 		}
 
-		c.Assert(cb.Call(fn1), Equals, ErrCircuitOpen)
+		Expect(cb.Call(fn1)).To(Equal(ErrCircuitOpen))
 		<-time.After(100 * time.Millisecond)
-		c.Assert(cb.Call(fn1), Equals, err)
-		c.Assert(cb.Call(fn2), Equals, ErrCircuitOpen)
+		Expect(cb.Call(fn1)).To(Equal(err))
+
+		Expect(cb.Call(fn2)).To(Equal(ErrCircuitOpen))
 		<-time.After(150 * time.Millisecond)
-		c.Assert(cb.Call(fn1), Equals, err)
-		c.Assert(cb.Call(fn2), Equals, ErrCircuitOpen)
+		Expect(cb.Call(fn1)).To(Equal(err))
+
+		Expect(cb.Call(fn2)).To(Equal(ErrCircuitOpen))
 		<-time.After(200 * time.Millisecond)
-		c.Assert(cb.Call(fn1), Equals, err)
-		c.Assert(cb.Call(fn2), Equals, ErrCircuitOpen)
+		Expect(cb.Call(fn1)).To(Equal(err))
+
+		Expect(cb.Call(fn2)).To(Equal(ErrCircuitOpen))
 		<-time.After(250 * time.Millisecond)
-		c.Assert(cb.Call(fn2), Equals, nil)
+		Expect(cb.Call(fn2)).To(BeNil())
 	}
 
 	runTest()
 	runTest()
 }
 
-func (s *OvercurrentSuite) TestHardTrip(c *C) {
+func (s *BreakerSuite) TestHardTrip(t *testing.T) {
 	cb := NewCircuitBreaker(&CircuitBreakerConfig{
 		InvocationTimeout:          DefaultInvocationTimeout,
 		ResetBackoff:               backoff.NewConstantBackoff(250 * time.Millisecond),
@@ -216,30 +223,30 @@ func (s *OvercurrentSuite) TestHardTrip(c *C) {
 		return nil
 	}
 
-	c.Assert(cb.Call(fn), Equals, nil)
+	Expect(cb.Call(fn)).To(BeNil())
 	cb.Trip()
 
-	c.Assert(cb.Call(fn), Equals, ErrCircuitOpen)
+	Expect(cb.Call(fn)).To(Equal(ErrCircuitOpen))
 	<-time.After(250 * time.Millisecond)
-	c.Assert(cb.Call(fn), Equals, ErrCircuitOpen)
+	Expect(cb.Call(fn)).To(Equal(ErrCircuitOpen))
 
 	cb.Reset()
-	c.Assert(cb.Call(fn), Equals, nil)
+	Expect(cb.Call(fn)).To(BeNil())
 }
 
-func (s *OvercurrentSuite) TestHardReset(c *C) {
+func (s *BreakerSuite) TestHardReset(t *testing.T) {
 	cb := NewCircuitBreaker(DefaultCircuitBreakerConfig())
 
-	err := errors.New("Test error.")
+	err := fmt.Errorf("test error")
 	fn1 := func() error { return err }
 	fn2 := func() error { return nil }
 
 	for i := 0; i < 5; i++ {
-		c.Assert(cb.Call(fn1), Equals, err)
+		Expect(cb.Call(fn1)).To(Equal(err))
 	}
 
-	c.Assert(cb.Call(fn2), Equals, ErrCircuitOpen)
+	Expect(cb.Call(fn2)).To(Equal(ErrCircuitOpen))
 
 	cb.Reset()
-	c.Assert(cb.Call(fn2), Equals, nil)
+	Expect(cb.Call(fn2)).To(BeNil())
 }

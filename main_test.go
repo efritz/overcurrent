@@ -1,13 +1,18 @@
 package overcurrent
 
 import (
-	. "gopkg.in/check.v1"
 	"testing"
+
+	"github.com/aphistic/sweet"
+	. "github.com/onsi/gomega"
 )
 
-// Hook up gocheck into the "go test" runner.
-func Test(t *testing.T) { TestingT(t) }
+func Test(t *testing.T) {
+	sweet.T(func(s *sweet.S) {
+		RegisterFailHandler(sweet.GomegaFail)
 
-type OvercurrentSuite struct{}
-
-var _ = Suite(&OvercurrentSuite{})
+		s.RunSuite(t, &TripSuite{})
+		s.RunSuite(t, &FailureSuite{})
+		s.RunSuite(t, &BreakerSuite{})
+	})
+}

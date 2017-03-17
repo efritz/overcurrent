@@ -1,29 +1,30 @@
 package overcurrent
 
 import (
+	"testing"
 	"time"
 
-	. "gopkg.in/check.v1"
+	. "github.com/onsi/gomega"
 )
 
-func (s *OvercurrentSuite) TestConsecutive(c *C) {
-	tc := NewConsecutiveFailureTripCondition(25)
+type TripSuite struct{}
 
-	c.Assert(tc.ShouldTrip(), Equals, false)
+func (s *TripSuite) TestConsecutive(t *testing.T) {
+	tc := NewConsecutiveFailureTripCondition(25)
+	Expect(tc.ShouldTrip()).To(BeFalse())
 
 	for i := 0; i < 24; i++ {
 		tc.Failure()
 	}
 
-	c.Assert(tc.ShouldTrip(), Equals, false)
+	Expect(tc.ShouldTrip()).To(BeFalse())
 	tc.Failure()
-	c.Assert(tc.ShouldTrip(), Equals, true)
+	Expect(tc.ShouldTrip()).To(BeTrue())
 }
 
-func (s *OvercurrentSuite) TestConsecutiveBrokenChain(c *C) {
+func (s *TripSuite) TestConsecutiveBrokenChain(t *testing.T) {
 	tc := NewConsecutiveFailureTripCondition(25)
-
-	c.Assert(tc.ShouldTrip(), Equals, false)
+	Expect(tc.ShouldTrip()).To(BeFalse())
 
 	for i := 0; i < 30; i++ {
 		if i == 15 {
@@ -33,13 +34,12 @@ func (s *OvercurrentSuite) TestConsecutiveBrokenChain(c *C) {
 		tc.Failure()
 	}
 
-	c.Assert(tc.ShouldTrip(), Equals, false)
+	Expect(tc.ShouldTrip()).To(BeFalse())
 }
 
-func (s *OvercurrentSuite) TestWindow(c *C) {
+func (s *TripSuite) TestWindow(t *testing.T) {
 	tc := NewWindowFailureTripCondition(150*time.Millisecond, 10)
-
-	c.Assert(tc.ShouldTrip(), Equals, false)
+	Expect(tc.ShouldTrip()).To(BeFalse())
 
 	tc.Failure()
 	<-time.After(50 * time.Millisecond)
@@ -50,12 +50,12 @@ func (s *OvercurrentSuite) TestWindow(c *C) {
 	}
 
 	<-time.After(50 * time.Millisecond)
-	c.Assert(tc.ShouldTrip(), Equals, false)
+	Expect(tc.ShouldTrip()).To(BeFalse())
 	tc.Failure()
-	c.Assert(tc.ShouldTrip(), Equals, true)
+	Expect(tc.ShouldTrip()).To(BeTrue())
 
 	<-time.After(50 * time.Millisecond)
-	c.Assert(tc.ShouldTrip(), Equals, false)
+	Expect(tc.ShouldTrip()).To(BeFalse())
 	tc.Failure()
-	c.Assert(tc.ShouldTrip(), Equals, true)
+	Expect(tc.ShouldTrip()).To(BeTrue())
 }
