@@ -37,8 +37,17 @@ type (
 		log       []time.Time
 		window    time.Duration
 		threshold int
+		clock     clock
 	}
 )
+
+// NewConsecutiveFailureTripCondition creates a new ConsecutiveFailureTripCondition.
+func NewConsecutiveFailureTripCondition(threshold int) *ConsecutiveFailureTripCondition {
+	return &ConsecutiveFailureTripCondition{
+		count:     0,
+		threshold: threshold,
+	}
+}
 
 // Failure increases the failure count.
 func (tc *ConsecutiveFailureTripCondition) Failure() {
@@ -55,17 +64,24 @@ func (tc *ConsecutiveFailureTripCondition) ShouldTrip() bool {
 	return tc.count >= tc.threshold
 }
 
-// NewConsecutiveFailureTripCondition creates a new ConsecutiveFailureTripCondition.
-func NewConsecutiveFailureTripCondition(threshold int) *ConsecutiveFailureTripCondition {
-	return &ConsecutiveFailureTripCondition{
-		count:     0,
+// NewWindowFailureTripCondition creates a new WindowFailureTripCondition.
+func NewWindowFailureTripCondition(window time.Duration, threshold int) *WindowFailureTripCondition {
+	return newWindowFailureTripConditionWithClock(window, threshold, &realClock{})
+
+}
+
+func newWindowFailureTripConditionWithClock(window time.Duration, threshold int, clock clock) *WindowFailureTripCondition {
+	return &WindowFailureTripCondition{
+		log:       []time.Time{},
+		window:    window,
 		threshold: threshold,
+		clock:     clock,
 	}
 }
 
 // Failure logs the time of this failure.
 func (tc *WindowFailureTripCondition) Failure() {
-	tc.log = append(tc.log, time.Now())
+	tc.log = append(tc.log, tc.clock.Now())
 }
 
 // Success is a no-op.
@@ -75,23 +91,9 @@ func (tc *WindowFailureTripCondition) Success() {
 // ShouldTrip returns true if the number of logged failures within the window
 // meets or exceeds the failure threshold.
 func (tc *WindowFailureTripCondition) ShouldTrip() bool {
-	i := 0
-	for i < len(tc.log) && time.Now().Sub(tc.log[i]) > tc.window {
-		i++
-	}
-
-	if i > 0 {
-		tc.log = tc.log[i:]
+	for len(tc.log) != 0 && tc.clock.Now().Sub(tc.log[0]) >= tc.window {
+		tc.log = tc.log[1:]
 	}
 
 	return len(tc.log) >= tc.threshold
-}
-
-// NewWindowFailureTripCondition creates a new WindowFailureTripCondition.
-func NewWindowFailureTripCondition(window time.Duration, threshold int) *WindowFailureTripCondition {
-	return &WindowFailureTripCondition{
-		log:       []time.Time{},
-		window:    window,
-		threshold: threshold,
-	}
 }
