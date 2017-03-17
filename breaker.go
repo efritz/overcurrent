@@ -4,15 +4,22 @@ import (
 	"errors"
 	"math/rand"
 	"time"
-
-	"github.com/efritz/backoff"
 )
 
-// Backoff is the interface to a backoff interval generator. See the
-// backoff dependency for details.
-type Backoff backoff.Backoff
+type (
+	// CircuitBreaker protects the invocation of a function and monitors failures.
+	// After a certain failure threshold is reached, future invocations will instead
+	// return an ErrErrCircuitOpen instead of attempting to invoke the function again.
+	CircuitBreaker struct {
+		config          *CircuitBreakerConfig
+		hardTrip        bool
+		lastState       circuitState
+		lastFailureTime *time.Time
+		resetTimeout    *time.Duration
+	}
 
-type circuitState int
+	circuitState int
+)
 
 const (
 	openState       circuitState = iota // Failure state
@@ -28,20 +35,6 @@ var (
 	// takes too long to execute.
 	ErrInvocationTimeout = errors.New("Invocation has timed out")
 )
-
-//
-//
-
-// CircuitBreaker protects the invocation of a function and monitors failures.
-// After a certain failure threshold is reached, future invocations will instead
-// return an ErrErrCircuitOpen instead of attempting to invoke the function again.
-type CircuitBreaker struct {
-	config          *CircuitBreakerConfig
-	hardTrip        bool
-	lastState       circuitState
-	lastFailureTime *time.Time
-	resetTimeout    *time.Duration
-}
 
 // NewCircuitBreaker creates a CircuitBreaker with the given configuration.
 func NewCircuitBreaker(config *CircuitBreakerConfig) *CircuitBreaker {
@@ -61,7 +54,9 @@ func (cb *CircuitBreaker) Call(f func() error) error {
 		return ErrCircuitOpen
 	}
 
-	if err := cb.callWithTimeout(f); err != nil && cb.config.FailureInterpreter.ShouldTrip(err) {
+	err := cb.callWithTimeout(f)
+
+	if err != nil && cb.config.FailureInterpreter.ShouldTrip(err) {
 		cb.recordFailure()
 		return err
 	}
@@ -81,9 +76,6 @@ func (cb *CircuitBreaker) Trip() {
 func (cb *CircuitBreaker) Reset() {
 	cb.recordSuccess()
 }
-
-//
-//
 
 func (cb *CircuitBreaker) shouldTry() bool {
 	if cb.hardTrip || cb.state() == openState {
@@ -127,15 +119,16 @@ func (cb *CircuitBreaker) callWithTimeout(f func() error) error {
 		return f()
 	}
 
-	c := make(chan error)
+	ch := make(chan error)
 	go func() {
-		c <- f()
-		close(c)
+		defer close(ch)
+		ch <- f()
 	}()
 
 	select {
-	case err := <-c:
+	case err := <-ch:
 		return err
+
 	case <-time.After(cb.config.InvocationTimeout):
 		return ErrInvocationTimeout
 	}

@@ -6,6 +6,18 @@ import (
 	"github.com/efritz/backoff"
 )
 
+type (
+	// CircuitBreakerConfig is a configuration struct which describes the
+	// behavior of a CircuitBreaker.
+	CircuitBreakerConfig struct {
+		InvocationTimeout          time.Duration
+		HalfClosedRetryProbability float64
+		ResetBackoff               backoff.Backoff
+		FailureInterpreter         FailureInterpreter
+		TripCondition              TripCondition
+	}
+)
+
 const (
 	// DefaultInvocationTimeout is the invocation timeout used by
 	// DefaultCircuitBreakerConfig.
@@ -16,19 +28,6 @@ const (
 	// in half-closed state used by DefaultCircuitBreakerConfig.
 	DefaultHalfClosedRetryProbability = .5
 )
-
-//
-//
-
-// CircuitBreakerConfig is a configuration struct which describes the
-// behavior of a CircuitBreaker.
-type CircuitBreakerConfig struct {
-	InvocationTimeout          time.Duration
-	HalfClosedRetryProbability float64
-	ResetBackoff               Backoff
-	FailureInterpreter         FailureInterpreter
-	TripCondition              TripCondition
-}
 
 // DefaultCircuitBreakerConfig creates a circuit breaker config usign the
 // default values for timeouts and half-closed retry probability, a constant
