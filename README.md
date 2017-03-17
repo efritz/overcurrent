@@ -3,6 +3,7 @@
 [![GoDoc](https://godoc.org/github.com/efritz/overcurrent?status.svg)](https://godoc.org/github.com/efritz/overcurrent)
 [![Build Status](https://secure.travis-ci.org/efritz/overcurrent.png)](http://travis-ci.org/efritz/overcurrent)
 [![codecov.io](http://codecov.io/github/efritz/overcurrent/coverage.svg?branch=master)](http://codecov.io/github/efritz/overcurrent?branch=master)
+[![Go Report Card](https://goreportcard.com/badge/github.com/efritz/overcurrent)](https://goreportcard.com/report/github.com/efritz/overcurrent)
 
 Go library for protecting function calls via circuit breaker pattern.
 
