@@ -1,7 +1,7 @@
 package overcurrent
 
 import (
-	"errors"
+	"fmt"
 	"math/rand"
 	"time"
 )
@@ -12,6 +12,7 @@ type (
 	// return an ErrErrCircuitOpen instead of attempting to invoke the function again.
 	CircuitBreaker struct {
 		config          *CircuitBreakerConfig
+		clock           clock
 		hardTrip        bool
 		lastState       circuitState
 		lastFailureTime *time.Time
@@ -29,18 +30,23 @@ const (
 
 var (
 	// ErrCircuitOpen occurs when the Call method fails immediatley.
-	ErrCircuitOpen = errors.New("Circuit is open")
+	ErrCircuitOpen = fmt.Errorf("circuit is open")
 
 	// ErrInvocationTimeout occurs when the method invoked by Call
 	// takes too long to execute.
-	ErrInvocationTimeout = errors.New("Invocation has timed out")
+	ErrInvocationTimeout = fmt.Errorf("invocation has timed out")
 )
 
 // NewCircuitBreaker creates a CircuitBreaker with the given configuration.
 func NewCircuitBreaker(config *CircuitBreakerConfig) *CircuitBreaker {
+	return newCircuitBreakerWithClock(config, &realClock{})
+}
+
+func newCircuitBreakerWithClock(config *CircuitBreakerConfig, clock clock) *CircuitBreaker {
 	return &CircuitBreaker{
 		config:    config,
 		lastState: closedState,
+		clock:     clock,
 	}
 }
 
@@ -104,7 +110,7 @@ func (cb *CircuitBreaker) state() circuitState {
 	}
 
 	if cb.lastFailureTime != nil {
-		if time.Now().Sub(*cb.lastFailureTime) >= *cb.resetTimeout {
+		if cb.clock.Now().Sub(*cb.lastFailureTime) >= *cb.resetTimeout {
 			cb.lastState = halfClosedState
 			return halfClosedState
 		}
@@ -129,7 +135,7 @@ func (cb *CircuitBreaker) callWithTimeout(f func() error) error {
 	case err := <-ch:
 		return err
 
-	case <-time.After(cb.config.InvocationTimeout):
+	case <-cb.clock.After(cb.config.InvocationTimeout):
 		return ErrInvocationTimeout
 	}
 }
@@ -144,7 +150,7 @@ func (cb *CircuitBreaker) recordSuccess() {
 }
 
 func (cb *CircuitBreaker) recordFailure() {
-	now := time.Now()
+	now := cb.clock.Now()
 	cb.lastFailureTime = &now
 	cb.config.TripCondition.Failure()
 }

@@ -26,7 +26,7 @@ const (
 	// DefaultHalfClosedRetryProbability is the probability that
 	// the function shoudl be called while the CircuitBreaker is
 	// in half-closed state used by DefaultCircuitBreakerConfig.
-	DefaultHalfClosedRetryProbability = .5
+	DefaultHalfClosedRetryProbability = 0.5
 )
 
 // DefaultCircuitBreakerConfig creates a circuit breaker config usign the

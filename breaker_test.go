@@ -12,241 +12,273 @@ import (
 type BreakerSuite struct{}
 
 func (s *BreakerSuite) TestSuccess(t *testing.T) {
-	cb := NewCircuitBreaker(DefaultCircuitBreakerConfig())
-	fn := func() error {
-		return nil
-	}
-
-	Expect(cb.Call(fn)).To(BeNil())
+	breaker := NewCircuitBreaker(testConfig())
+	Expect(breaker.Call(nilFunc)).To(BeNil())
 }
 
 func (s *BreakerSuite) TestNaturalError(t *testing.T) {
-	err := fmt.Errorf("test error")
-
-	cb := NewCircuitBreaker(DefaultCircuitBreakerConfig())
-	fn := func() error {
-		return err
-	}
-
-	Expect(cb.Call(fn)).To(Equal(err))
+	breaker := NewCircuitBreaker(testConfig())
+	Expect(breaker.Call(errFunc)).To(Equal(errTest))
 }
 
 func (s *BreakerSuite) TestNaturalErrorTrip(t *testing.T) {
-	err := fmt.Errorf("test error")
-
-	cb := NewCircuitBreaker(DefaultCircuitBreakerConfig())
-	fn := func() error {
-		return err
-	}
+	breaker := NewCircuitBreaker(testConfig())
 
 	for i := 0; i < 5; i++ {
-		Expect(cb.Call(fn)).To(Equal(err))
+		Expect(breaker.Call(errFunc)).To(Equal(errTest))
 	}
 
-	Expect(cb.Call(fn)).To(Equal(ErrCircuitOpen))
+	Expect(breaker.Call(errFunc)).To(Equal(ErrCircuitOpen))
 }
 
 func (s *BreakerSuite) TestTimeout(t *testing.T) {
-	cb := NewCircuitBreaker(DefaultCircuitBreakerConfig())
-	fn := func() error {
-		<-time.After(250 * time.Millisecond)
-		return nil
-	}
+	var (
+		clockChan = make(chan time.Time)
+		clock     = newMockClock(clockChan)
+		breaker   = newCircuitBreakerWithClock(testConfig(), clock)
+	)
 
-	Expect(cb.Call(fn)).To(Equal(ErrInvocationTimeout))
+	go func() {
+		defer close(clockChan)
+		clockChan <- clock.now
+	}()
+
+	Expect(breaker.Call(blockingFunc)).To(Equal(ErrInvocationTimeout))
+	Expect(clock.afterArgs).To(HaveLen(1))
+	Expect(clock.afterArgs[0]).To(Equal(time.Minute))
 }
 
 func (s *BreakerSuite) TestTimeoutTrip(t *testing.T) {
-	cb := NewCircuitBreaker(DefaultCircuitBreakerConfig())
-	fn := func() error {
-		<-time.After(250 * time.Millisecond)
-		return nil
-	}
+	var (
+		clockChan = make(chan time.Time)
+		clock     = newMockClock(clockChan)
+		breaker   = newCircuitBreakerWithClock(testConfig(), clock)
+	)
+
+	go func() {
+		defer close(clockChan)
+
+		for i := 0; i < 5; i++ {
+			clockChan <- clock.now
+		}
+	}()
 
 	for i := 0; i < 5; i++ {
-		Expect(cb.Call(fn)).To(Equal(ErrInvocationTimeout))
+		Expect(breaker.Call(blockingFunc)).To(Equal(ErrInvocationTimeout))
 	}
 
-	Expect(cb.Call(fn)).To(Equal(ErrCircuitOpen))
+	Expect(breaker.Call(blockingFunc)).To(Equal(ErrCircuitOpen))
 }
 
 func (s *BreakerSuite) TestTimeoutDisabled(t *testing.T) {
-	cb := NewCircuitBreaker(&CircuitBreakerConfig{
-		InvocationTimeout:          0,
-		ResetBackoff:               backoff.NewConstantBackoff(250 * time.Millisecond),
-		HalfClosedRetryProbability: 1,
-		FailureInterpreter:         NewAnyErrorFailureInterpreter(),
-		TripCondition:              NewConsecutiveFailureTripCondition(5),
-	})
+
+	var (
+		clockChan = make(chan time.Time)
+		clock     = newMockClock(clockChan)
+		config    = testConfig()
+		breaker   = newCircuitBreakerWithClock(config, clock)
+		sync      = make(chan time.Time)
+	)
 
 	fn := func() error {
-		<-time.After(250 * time.Millisecond)
+		<-sync
 		return nil
 	}
 
-	Expect(cb.Call(fn)).To(BeNil())
+	go func() {
+		defer close(clockChan)
+		clockChan <- clock.now
+	}()
+
+	Expect(breaker.Call(fn)).To(Equal(ErrInvocationTimeout))
+
+	config.InvocationTimeout = 0
+	close(sync)
+	Expect(breaker.Call(fn)).To(BeNil())
 }
 
 func (s *BreakerSuite) TestHalfOpenFailure(t *testing.T) {
-	cb := NewCircuitBreaker(&CircuitBreakerConfig{
-		InvocationTimeout:          DefaultInvocationTimeout,
-		ResetBackoff:               backoff.NewConstantBackoff(250 * time.Millisecond),
-		HalfClosedRetryProbability: 1,
-		FailureInterpreter:         NewAnyErrorFailureInterpreter(),
-		TripCondition:              NewConsecutiveFailureTripCondition(5),
-	})
+	var (
+		config    = testConfig()
+		clockChan = make(chan time.Time)
+		clock     = newMockClock(clockChan)
+		breaker   = newCircuitBreakerWithClock(config, clock)
+	)
 
-	err := fmt.Errorf("test error")
-	fn1 := func() error { return err }
-	fn2 := func() error { return nil }
+	defer close(clockChan)
+	config.HalfClosedRetryProbability = 1
 
 	for i := 0; i < 5; i++ {
-		Expect(cb.Call(fn1)).To(Equal(err))
+		Expect(breaker.Call(errFunc)).To(Equal(errTest))
 	}
 
-	Expect(cb.Call(fn1)).To(Equal(ErrCircuitOpen))
-	<-time.After(250 * time.Millisecond)
-	Expect(cb.Call(fn1)).To(Equal(err))
-	Expect(cb.Call(fn2)).To(Equal(ErrCircuitOpen))
+	Expect(breaker.Call(errFunc)).To(Equal(ErrCircuitOpen))
+
+	// Wait for retry backoff
+	clock.advance(15 * time.Second)
+	Expect(breaker.Call(errFunc)).To(Equal(errTest))
+	Expect(breaker.Call(nilFunc)).To(Equal(ErrCircuitOpen))
 }
 
 func (s *BreakerSuite) TestHalfOpenReset(t *testing.T) {
-	cb := NewCircuitBreaker(&CircuitBreakerConfig{
-		InvocationTimeout:          DefaultInvocationTimeout,
-		ResetBackoff:               backoff.NewConstantBackoff(250 * time.Millisecond),
-		HalfClosedRetryProbability: 1,
-		FailureInterpreter:         NewAnyErrorFailureInterpreter(),
-		TripCondition:              NewConsecutiveFailureTripCondition(5),
-	})
+	var (
+		config    = testConfig()
+		clockChan = make(chan time.Time)
+		clock     = newMockClock(clockChan)
+		breaker   = newCircuitBreakerWithClock(config, clock)
+	)
 
-	err := fmt.Errorf("test error")
-	fn1 := func() error { return err }
-	fn2 := func() error { return nil }
+	defer close(clockChan)
+	config.HalfClosedRetryProbability = 1
 
 	for i := 0; i < 5; i++ {
-		Expect(cb.Call(fn1)).To(Equal(err))
+		Expect(breaker.Call(errFunc)).To(Equal(errTest))
 	}
 
-	Expect(cb.Call(fn1)).To(Equal(ErrCircuitOpen))
-	<-time.After(250 * time.Millisecond)
-	Expect(cb.Call(fn2)).To(BeNil())
+	Expect(breaker.Call(errFunc)).To(Equal(ErrCircuitOpen))
+
+	// Wait for retry backoff
+	clock.advance(15 * time.Second)
+	Expect(breaker.Call(nilFunc)).To(BeNil())
 }
 
-func (s *BreakerSuite) TestHalfOpenProbability(t *testing.T) {
-	runs := 5000
-	prob := .25
-	dist := .01
+var (
+	TRIALS      = 50000
+	PROBAIBLITY = 0.25
+)
 
+func (s *BreakerSuite) TestHalfOpenProbability(t *testing.T) {
 	success := 0
 	failure := 0
 
-	fn1 := func() error { return fmt.Errorf("test error") }
-	fn2 := func() error {
-		success++
-		return nil
-	}
-
-	for i := 0; i < runs; i++ {
-		cb := NewCircuitBreaker(&CircuitBreakerConfig{
-			InvocationTimeout:          DefaultInvocationTimeout,
-			ResetBackoff:               backoff.NewConstantBackoff(1 * time.Nanosecond),
-			HalfClosedRetryProbability: prob,
-			FailureInterpreter:         NewAnyErrorFailureInterpreter(),
-			TripCondition:              NewConsecutiveFailureTripCondition(1),
-		})
-
-		cb.Call(fn1)
-		<-time.After(1 * time.Nanosecond)
-
-		if cb.Call(fn2) == ErrCircuitOpen {
+	for i := 0; i < TRIALS; i++ {
+		if runHalfOpenProbabilityTrial(PROBAIBLITY) {
+			success++
+		} else {
 			failure++
 		}
 	}
 
-	lower := int(float64(runs)*prob - float64(runs)*dist)
-	upper := int(float64(runs)*prob + float64(runs)*dist)
+	Expect(success + failure).To(Equal(TRIALS))
+	Expect(success).To(BeNumerically("~", success, float64(TRIALS)*PROBAIBLITY))
+}
 
-	Expect(success + failure).To(Equal(runs))
-	Expect(success).To(BeNumerically(">=", lower))
-	Expect(success).To(BeNumerically("<=", upper))
+func runHalfOpenProbabilityTrial(probability float64) (called bool) {
+	var (
+		config    = testConfig()
+		clockChan = make(chan time.Time)
+		clock     = newMockClock(clockChan)
+		breaker   = newCircuitBreakerWithClock(config, clock)
+	)
+
+	defer close(clockChan)
+	config.HalfClosedRetryProbability = probability
+	config.TripCondition = NewConsecutiveFailureTripCondition(1)
+
+	breaker.Call(errFunc)
+	clock.advance(15 * time.Second)
+	return breaker.Call(nilFunc) != ErrCircuitOpen
 }
 
 func (s *BreakerSuite) TestResetBackoff(t *testing.T) {
-	cb := NewCircuitBreaker(&CircuitBreakerConfig{
-		InvocationTimeout:          DefaultInvocationTimeout,
-		ResetBackoff:               backoff.NewLinearBackoff(100*time.Millisecond, 50*time.Millisecond, time.Second),
-		HalfClosedRetryProbability: 1,
-		FailureInterpreter:         NewAnyErrorFailureInterpreter(),
-		TripCondition:              NewConsecutiveFailureTripCondition(5),
-	})
+	var (
+		config    = testConfig()
+		clockChan = make(chan time.Time)
+		clock     = newMockClock(clockChan)
+		breaker   = newCircuitBreakerWithClock(config, clock)
+	)
 
-	err := fmt.Errorf("test error")
-	fn1 := func() error { return err }
-	fn2 := func() error { return nil }
+	config.HalfClosedRetryProbability = 1
+	config.ResetBackoff = backoff.NewLinearBackoff(
+		100*time.Millisecond,
+		50*time.Millisecond,
+		time.Second,
+	)
 
-	runTest := func() {
-		for i := 0; i < 5; i++ {
-			Expect(cb.Call(fn1)).To(Equal(err))
+	for i := 0; i < 2; i++ {
+		for j := 0; j < 5; j++ {
+			Expect(breaker.Call(errFunc)).To(Equal(errTest))
 		}
 
-		Expect(cb.Call(fn1)).To(Equal(ErrCircuitOpen))
-		<-time.After(100 * time.Millisecond)
-		Expect(cb.Call(fn1)).To(Equal(err))
+		Expect(breaker.Call(errFunc)).To(Equal(ErrCircuitOpen))
+		clock.advance(100 * time.Millisecond)
+		Expect(breaker.Call(errFunc)).To(Equal(errTest))
 
-		Expect(cb.Call(fn2)).To(Equal(ErrCircuitOpen))
-		<-time.After(150 * time.Millisecond)
-		Expect(cb.Call(fn1)).To(Equal(err))
+		Expect(breaker.Call(nilFunc)).To(Equal(ErrCircuitOpen))
+		clock.advance(150 * time.Millisecond)
+		Expect(breaker.Call(errFunc)).To(Equal(errTest))
 
-		Expect(cb.Call(fn2)).To(Equal(ErrCircuitOpen))
-		<-time.After(200 * time.Millisecond)
-		Expect(cb.Call(fn1)).To(Equal(err))
+		Expect(breaker.Call(nilFunc)).To(Equal(ErrCircuitOpen))
+		clock.advance(200 * time.Millisecond)
+		Expect(breaker.Call(errFunc)).To(Equal(errTest))
 
-		Expect(cb.Call(fn2)).To(Equal(ErrCircuitOpen))
-		<-time.After(250 * time.Millisecond)
-		Expect(cb.Call(fn2)).To(BeNil())
+		Expect(breaker.Call(nilFunc)).To(Equal(ErrCircuitOpen))
+		clock.advance(250 * time.Millisecond)
+		Expect(breaker.Call(nilFunc)).To(BeNil())
 	}
-
-	runTest()
-	runTest()
 }
 
 func (s *BreakerSuite) TestHardTrip(t *testing.T) {
-	cb := NewCircuitBreaker(&CircuitBreakerConfig{
-		InvocationTimeout:          DefaultInvocationTimeout,
-		ResetBackoff:               backoff.NewConstantBackoff(250 * time.Millisecond),
-		HalfClosedRetryProbability: 1,
-		FailureInterpreter:         NewAnyErrorFailureInterpreter(),
-		TripCondition:              NewConsecutiveFailureTripCondition(1),
-	})
+	var (
+		clockChan = make(chan time.Time)
+		clock     = newMockClock(clockChan)
+		breaker   = newCircuitBreakerWithClock(testConfig(), clock)
+	)
 
-	fn := func() error {
-		return nil
-	}
+	defer close(clockChan)
 
-	Expect(cb.Call(fn)).To(BeNil())
-	cb.Trip()
+	Expect(breaker.Call(nilFunc)).To(BeNil())
+	breaker.Trip()
 
-	Expect(cb.Call(fn)).To(Equal(ErrCircuitOpen))
-	<-time.After(250 * time.Millisecond)
-	Expect(cb.Call(fn)).To(Equal(ErrCircuitOpen))
+	Expect(breaker.Call(nilFunc)).To(Equal(ErrCircuitOpen))
+	clock.advance(250 * time.Millisecond)
+	Expect(breaker.Call(nilFunc)).To(Equal(ErrCircuitOpen))
 
-	cb.Reset()
-	Expect(cb.Call(fn)).To(BeNil())
+	breaker.Reset()
+	Expect(breaker.Call(nilFunc)).To(BeNil())
 }
 
 func (s *BreakerSuite) TestHardReset(t *testing.T) {
-	cb := NewCircuitBreaker(DefaultCircuitBreakerConfig())
-
-	err := fmt.Errorf("test error")
-	fn1 := func() error { return err }
-	fn2 := func() error { return nil }
+	breaker := NewCircuitBreaker(testConfig())
 
 	for i := 0; i < 5; i++ {
-		Expect(cb.Call(fn1)).To(Equal(err))
+		Expect(breaker.Call(errFunc)).To(Equal(errTest))
 	}
 
-	Expect(cb.Call(fn2)).To(Equal(ErrCircuitOpen))
+	Expect(breaker.Call(nilFunc)).To(Equal(ErrCircuitOpen))
+	breaker.Reset()
+	Expect(breaker.Call(nilFunc)).To(BeNil())
+}
 
-	cb.Reset()
-	Expect(cb.Call(fn2)).To(BeNil())
+//
+//
+//
+
+var (
+	errTest = fmt.Errorf("test error")
+)
+
+func nilFunc() error {
+	return nil
+}
+
+func errFunc() error {
+	return errTest
+}
+
+func blockingFunc() error {
+	ch := make(chan struct{})
+	<-ch
+
+	return nil
+}
+
+func testConfig() *CircuitBreakerConfig {
+	return &CircuitBreakerConfig{
+		InvocationTimeout:          time.Minute,
+		HalfClosedRetryProbability: 0.75,
+		ResetBackoff:               backoff.NewConstantBackoff(15 * time.Second),
+		FailureInterpreter:         NewAnyErrorFailureInterpreter(),
+		TripCondition:              NewConsecutiveFailureTripCondition(5),
+	}
 }

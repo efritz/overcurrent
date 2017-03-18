@@ -39,7 +39,7 @@ func (s *TripSuite) TestConsecutiveBrokenChain(t *testing.T) {
 
 func (s *TripSuite) TestWindow(t *testing.T) {
 	var (
-		clock = newMockClock()
+		clock = newMockClock(nil)
 		tc    = newWindowFailureTripConditionWithClock(
 			3*time.Second,
 			10,
@@ -75,26 +75,4 @@ func (s *TripSuite) TestWindow(t *testing.T) {
 	// 2nd 10th
 	tc.Failure()
 	Expect(tc.ShouldTrip()).To(BeTrue())
-}
-
-//
-//
-//
-
-type mockClock struct {
-	now time.Time
-}
-
-func newMockClock() *mockClock {
-	return &mockClock{
-		now: time.Now(),
-	}
-}
-
-func (m *mockClock) Now() time.Time {
-	return m.now
-}
-
-func (m *mockClock) advance(d time.Duration) {
-	m.now = m.now.Add(d)
 }
