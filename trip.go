@@ -1,6 +1,7 @@
 package overcurrent
 
 import "time"
+import "github.com/efritz/glock"
 
 type (
 	// TripCondition is the interface that controls the open/closed state of the
@@ -37,7 +38,7 @@ type (
 		log       []time.Time
 		window    time.Duration
 		threshold int
-		clock     clock
+		clock     glock.Clock
 	}
 )
 
@@ -66,11 +67,11 @@ func (tc *ConsecutiveFailureTripCondition) ShouldTrip() bool {
 
 // NewWindowFailureTripCondition creates a new WindowFailureTripCondition.
 func NewWindowFailureTripCondition(window time.Duration, threshold int) *WindowFailureTripCondition {
-	return newWindowFailureTripConditionWithClock(window, threshold, &realClock{})
+	return newWindowFailureTripConditionWithClock(window, threshold, glock.NewRealClock())
 
 }
 
-func newWindowFailureTripConditionWithClock(window time.Duration, threshold int, clock clock) *WindowFailureTripCondition {
+func newWindowFailureTripConditionWithClock(window time.Duration, threshold int, clock glock.Clock) *WindowFailureTripCondition {
 	return &WindowFailureTripCondition{
 		log:       []time.Time{},
 		window:    window,

@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/efritz/glock"
 	. "github.com/onsi/gomega"
 )
 
@@ -39,7 +40,7 @@ func (s *TripSuite) TestConsecutiveBrokenChain(t *testing.T) {
 
 func (s *TripSuite) TestWindow(t *testing.T) {
 	var (
-		clock = newMockClock(nil)
+		clock = glock.NewMockClock()
 		tc    = newWindowFailureTripConditionWithClock(
 			3*time.Second,
 			10,
@@ -54,7 +55,7 @@ func (s *TripSuite) TestWindow(t *testing.T) {
 	// 1st
 	Expect(tc.ShouldTrip()).To(BeFalse())
 	tc.Failure()
-	clock.advance(time.Second)
+	clock.Advance(time.Second)
 
 	// 2nd .. 9th
 	for i := 0; i < 8; i++ {
@@ -63,13 +64,13 @@ func (s *TripSuite) TestWindow(t *testing.T) {
 	}
 
 	// 1st 10th
-	clock.advance(time.Second)
+	clock.Advance(time.Second)
 	Expect(tc.ShouldTrip()).To(BeFalse())
 	tc.Failure()
 	Expect(tc.ShouldTrip()).To(BeTrue())
 
 	// Expire one
-	clock.advance(time.Second)
+	clock.Advance(time.Second)
 	Expect(tc.ShouldTrip()).To(BeFalse())
 
 	// 2nd 10th

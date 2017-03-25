@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math/rand"
 	"time"
+
+	"github.com/efritz/glock"
 )
 
 type (
@@ -12,7 +14,7 @@ type (
 	// return an ErrErrCircuitOpen instead of attempting to invoke the function again.
 	CircuitBreaker struct {
 		config          *CircuitBreakerConfig
-		clock           clock
+		clock           glock.Clock
 		hardTrip        bool
 		lastState       circuitState
 		lastFailureTime *time.Time
@@ -39,10 +41,10 @@ var (
 
 // NewCircuitBreaker creates a CircuitBreaker with the given configuration.
 func NewCircuitBreaker(config *CircuitBreakerConfig) *CircuitBreaker {
-	return newCircuitBreakerWithClock(config, &realClock{})
+	return newCircuitBreakerWithClock(config, glock.NewRealClock())
 }
 
-func newCircuitBreakerWithClock(config *CircuitBreakerConfig, clock clock) *CircuitBreaker {
+func newCircuitBreakerWithClock(config *CircuitBreakerConfig, clock glock.Clock) *CircuitBreaker {
 	return &CircuitBreaker{
 		config:    config,
 		lastState: closedState,

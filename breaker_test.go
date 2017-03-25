@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/efritz/backoff"
+	"github.com/efritz/glock"
 	. "github.com/onsi/gomega"
 )
 
@@ -33,33 +34,35 @@ func (s *BreakerSuite) TestNaturalErrorTrip(t *testing.T) {
 
 func (s *BreakerSuite) TestTimeout(t *testing.T) {
 	var (
-		clockChan = make(chan time.Time)
-		clock     = newMockClock(clockChan)
+		afterChan = make(chan time.Time)
+		clock     = glock.NewMockClockWithAfterChan(afterChan)
 		breaker   = newCircuitBreakerWithClock(testConfig(), clock)
 	)
 
 	go func() {
-		defer close(clockChan)
-		clockChan <- clock.now
+		defer close(afterChan)
+		afterChan <- clock.Now()
 	}()
 
 	Expect(breaker.Call(blockingFunc)).To(Equal(ErrInvocationTimeout))
-	Expect(clock.afterArgs).To(HaveLen(1))
-	Expect(clock.afterArgs[0]).To(Equal(time.Minute))
+
+	afterArgs := clock.GetAfterArgs()
+	Expect(afterArgs).To(HaveLen(1))
+	Expect(afterArgs[0]).To(Equal(time.Minute))
 }
 
 func (s *BreakerSuite) TestTimeoutTrip(t *testing.T) {
 	var (
-		clockChan = make(chan time.Time)
-		clock     = newMockClock(clockChan)
+		afterChan = make(chan time.Time)
+		clock     = glock.NewMockClockWithAfterChan(afterChan)
 		breaker   = newCircuitBreakerWithClock(testConfig(), clock)
 	)
 
 	go func() {
-		defer close(clockChan)
+		defer close(afterChan)
 
 		for i := 0; i < 5; i++ {
-			clockChan <- clock.now
+			afterChan <- clock.Now()
 		}
 	}()
 
@@ -73,8 +76,8 @@ func (s *BreakerSuite) TestTimeoutTrip(t *testing.T) {
 func (s *BreakerSuite) TestTimeoutDisabled(t *testing.T) {
 
 	var (
-		clockChan = make(chan time.Time)
-		clock     = newMockClock(clockChan)
+		afterChan = make(chan time.Time)
+		clock     = glock.NewMockClockWithAfterChan(afterChan)
 		config    = testConfig()
 		breaker   = newCircuitBreakerWithClock(config, clock)
 		sync      = make(chan time.Time)
@@ -86,8 +89,8 @@ func (s *BreakerSuite) TestTimeoutDisabled(t *testing.T) {
 	}
 
 	go func() {
-		defer close(clockChan)
-		clockChan <- clock.now
+		defer close(afterChan)
+		afterChan <- clock.Now()
 	}()
 
 	Expect(breaker.Call(fn)).To(Equal(ErrInvocationTimeout))
@@ -100,12 +103,12 @@ func (s *BreakerSuite) TestTimeoutDisabled(t *testing.T) {
 func (s *BreakerSuite) TestHalfOpenFailure(t *testing.T) {
 	var (
 		config    = testConfig()
-		clockChan = make(chan time.Time)
-		clock     = newMockClock(clockChan)
+		afterChan = make(chan time.Time)
+		clock     = glock.NewMockClockWithAfterChan(afterChan)
 		breaker   = newCircuitBreakerWithClock(config, clock)
 	)
 
-	defer close(clockChan)
+	defer close(afterChan)
 	config.HalfClosedRetryProbability = 1
 
 	for i := 0; i < 5; i++ {
@@ -115,7 +118,7 @@ func (s *BreakerSuite) TestHalfOpenFailure(t *testing.T) {
 	Expect(breaker.Call(errFunc)).To(Equal(ErrCircuitOpen))
 
 	// Wait for retry backoff
-	clock.advance(15 * time.Second)
+	clock.Advance(15 * time.Second)
 	Expect(breaker.Call(errFunc)).To(Equal(errTest))
 	Expect(breaker.Call(nilFunc)).To(Equal(ErrCircuitOpen))
 }
@@ -123,12 +126,12 @@ func (s *BreakerSuite) TestHalfOpenFailure(t *testing.T) {
 func (s *BreakerSuite) TestHalfOpenReset(t *testing.T) {
 	var (
 		config    = testConfig()
-		clockChan = make(chan time.Time)
-		clock     = newMockClock(clockChan)
+		afterChan = make(chan time.Time)
+		clock     = glock.NewMockClockWithAfterChan(afterChan)
 		breaker   = newCircuitBreakerWithClock(config, clock)
 	)
 
-	defer close(clockChan)
+	defer close(afterChan)
 	config.HalfClosedRetryProbability = 1
 
 	for i := 0; i < 5; i++ {
@@ -138,7 +141,7 @@ func (s *BreakerSuite) TestHalfOpenReset(t *testing.T) {
 	Expect(breaker.Call(errFunc)).To(Equal(ErrCircuitOpen))
 
 	// Wait for retry backoff
-	clock.advance(15 * time.Second)
+	clock.Advance(15 * time.Second)
 	Expect(breaker.Call(nilFunc)).To(BeNil())
 }
 
@@ -166,25 +169,25 @@ func (s *BreakerSuite) TestHalfOpenProbability(t *testing.T) {
 func runHalfOpenProbabilityTrial(probability float64) (called bool) {
 	var (
 		config    = testConfig()
-		clockChan = make(chan time.Time)
-		clock     = newMockClock(clockChan)
+		afterChan = make(chan time.Time)
+		clock     = glock.NewMockClockWithAfterChan(afterChan)
 		breaker   = newCircuitBreakerWithClock(config, clock)
 	)
 
-	defer close(clockChan)
+	defer close(afterChan)
 	config.HalfClosedRetryProbability = probability
 	config.TripCondition = NewConsecutiveFailureTripCondition(1)
 
 	breaker.Call(errFunc)
-	clock.advance(15 * time.Second)
+	clock.Advance(15 * time.Second)
 	return breaker.Call(nilFunc) != ErrCircuitOpen
 }
 
 func (s *BreakerSuite) TestResetBackoff(t *testing.T) {
 	var (
 		config    = testConfig()
-		clockChan = make(chan time.Time)
-		clock     = newMockClock(clockChan)
+		afterChan = make(chan time.Time)
+		clock     = glock.NewMockClockWithAfterChan(afterChan)
 		breaker   = newCircuitBreakerWithClock(config, clock)
 	)
 
@@ -201,37 +204,37 @@ func (s *BreakerSuite) TestResetBackoff(t *testing.T) {
 		}
 
 		Expect(breaker.Call(errFunc)).To(Equal(ErrCircuitOpen))
-		clock.advance(100 * time.Millisecond)
+		clock.Advance(100 * time.Millisecond)
 		Expect(breaker.Call(errFunc)).To(Equal(errTest))
 
 		Expect(breaker.Call(nilFunc)).To(Equal(ErrCircuitOpen))
-		clock.advance(150 * time.Millisecond)
+		clock.Advance(150 * time.Millisecond)
 		Expect(breaker.Call(errFunc)).To(Equal(errTest))
 
 		Expect(breaker.Call(nilFunc)).To(Equal(ErrCircuitOpen))
-		clock.advance(200 * time.Millisecond)
+		clock.Advance(200 * time.Millisecond)
 		Expect(breaker.Call(errFunc)).To(Equal(errTest))
 
 		Expect(breaker.Call(nilFunc)).To(Equal(ErrCircuitOpen))
-		clock.advance(250 * time.Millisecond)
+		clock.Advance(250 * time.Millisecond)
 		Expect(breaker.Call(nilFunc)).To(BeNil())
 	}
 }
 
 func (s *BreakerSuite) TestHardTrip(t *testing.T) {
 	var (
-		clockChan = make(chan time.Time)
-		clock     = newMockClock(clockChan)
+		afterChan = make(chan time.Time)
+		clock     = glock.NewMockClockWithAfterChan(afterChan)
 		breaker   = newCircuitBreakerWithClock(testConfig(), clock)
 	)
 
-	defer close(clockChan)
+	defer close(afterChan)
 
 	Expect(breaker.Call(nilFunc)).To(BeNil())
 	breaker.Trip()
 
 	Expect(breaker.Call(nilFunc)).To(Equal(ErrCircuitOpen))
-	clock.advance(250 * time.Millisecond)
+	clock.Advance(250 * time.Millisecond)
 	Expect(breaker.Call(nilFunc)).To(Equal(ErrCircuitOpen))
 
 	breaker.Reset()
