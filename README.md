@@ -74,6 +74,12 @@ The `TripCondition` determines, based on recent failure history, when the
 breaker should trip. This interface can be customized to trip after a number
 of failures in a row, number of failures in a given time span, fail rate, etc.
 
+The breaker can be explicitly tripped and reset via the `Trip` and `Reset` methods. 
+If a breaker is manually tripped, then it will remain in open state until it is 
+manually reset (it will never transition to the half-closed state).
+
+### Function API
+
 To use the breaker, simply pass the function that attempts to access a resource
 to the `Call` method of the breaker. This method may attempt to call the passed
 function. The breaker will return a custom error if the circuit is closed or if
@@ -107,20 +113,9 @@ if err == nil {
 to each invocation of `Call`, as opposed to begin registered with the circuit
 breaker at initialization. This is to increase the flexibility of the API so
 the input to the function can easily change on each invocation. It is **not**
-advised that several disparate functions are passed to the same breaker - failures
-from one function will influence the other in ways that are not intuitive.
-
-The breaker can also be explicitly tripped and reset. If a breaker is manually
-tripped, then it will remain in open state until it is manually reset (it will
-never transition to the half-closed state).
-
-```go
-breaker.Trip()
-```
-
-```go
-breaker.Reset()
-```
+advised that several disparate functions are passed to the same breaker - 
+failures from one function will influence the other in ways that are not 
+intuitive.
 
 *Caveat:* If the runtime of a call exceeds the `InvocationTimeout` parameter,
 the return value of the function will be ignored, but the function execution
@@ -128,6 +123,34 @@ will not be *halted*. This may be a cause of leaking resources in some cases,
 such as network dialing. In these cases, it is better to consider a timeout
 as part of the function being called, and make sure the failure interpreter
 is aware of a timeout possibility from within the function.
+
+### Non-Function API
+
+Sometimes a chunk of code which should be protected by the circuit breaker is
+not easily contained in a single function. In these cases, the methods used by
+the `Call` method are exposed for manual use. First, the `ShouldTry` method can
+be queried to get the current state of the circuit breaker.
+
+```go
+if breaker.ShouldTry() {
+	// Try to execute the protected section
+}
+```
+
+Then, in the location where an attempt has been made, the result can be applied
+to the circuit breaker manually. Special effort must be made to ensure that *all*
+code paths mark a result with the breaker; otherwise, the trip condition may set
+the circuit state erroneously.
+
+```go
+if success {
+	// A nil error is successful
+	breaker.MarkResult(nil)
+} else {
+	// Mark whatever error is accepted by the registered failure interpreter
+	breaker.MarkResult(ErrBadAttempt)
+}
+```
 
 ## License
 

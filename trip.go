@@ -50,17 +50,14 @@ func NewConsecutiveFailureTripCondition(threshold int) *ConsecutiveFailureTripCo
 	}
 }
 
-// Failure increases the failure count.
 func (tc *ConsecutiveFailureTripCondition) Failure() {
 	tc.count++
 }
 
-// Success resets the failure count.
 func (tc *ConsecutiveFailureTripCondition) Success() {
 	tc.count = 0
 }
 
-// ShouldTrip returns true if the failure count meets or exceeds the failure threshold.
 func (tc *ConsecutiveFailureTripCondition) ShouldTrip() bool {
 	return tc.count >= tc.threshold
 }
@@ -80,17 +77,13 @@ func newWindowFailureTripConditionWithClock(window time.Duration, threshold int,
 	}
 }
 
-// Failure logs the time of this failure.
 func (tc *WindowFailureTripCondition) Failure() {
 	tc.log = append(tc.log, tc.clock.Now())
 }
 
-// Success is a no-op.
 func (tc *WindowFailureTripCondition) Success() {
 }
 
-// ShouldTrip returns true if the number of logged failures within the window
-// meets or exceeds the failure threshold.
 func (tc *WindowFailureTripCondition) ShouldTrip() bool {
 	for len(tc.log) != 0 && tc.clock.Now().Sub(tc.log[0]) >= tc.window {
 		tc.log = tc.log[1:]
