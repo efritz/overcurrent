@@ -77,3 +77,48 @@ func (s *TripSuite) TestWindow(t *testing.T) {
 	tc.Failure()
 	Expect(tc.ShouldTrip()).To(BeTrue())
 }
+
+func (s *TripSuite) TestPercentage(t *testing.T) {
+	tc := NewPercentageFailureTripCondition(100, .75)
+
+	times(25, tc.Success)
+	times(75, tc.Failure)
+	Expect(tc.ShouldTrip()).To(BeTrue())
+}
+
+func (s *TripSuite) TestPercentageSmallWindow(t *testing.T) {
+	tc := NewPercentageFailureTripCondition(100, .75)
+
+	times(50, tc.Failure)
+	Expect(tc.ShouldTrip()).To(BeFalse())
+}
+
+func (s *TripSuite) TestPercentageLogPushesOutSuccess(t *testing.T) {
+	tc := NewPercentageFailureTripCondition(100, .75)
+
+	times(25, tc.Success)
+	times(75, tc.Failure)
+	times(25, func() {
+		tc.Success()
+		Expect(tc.ShouldTrip()).To(BeTrue())
+	})
+
+	tc.Success()
+	Expect(tc.ShouldTrip()).To(BeFalse())
+}
+
+func (s *TripSuite) TestPercentageLogPushesOutFailure(t *testing.T) {
+	tc := NewPercentageFailureTripCondition(100, .75)
+
+	times(75, tc.Failure)
+	times(25, tc.Success)
+
+	tc.Success()
+	Expect(tc.ShouldTrip()).To(BeFalse())
+}
+
+func times(n int, f func()) {
+	for i := 0; i < n; i++ {
+		f()
+	}
+}
