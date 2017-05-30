@@ -57,7 +57,6 @@ func (cb *CircuitBreaker) Trip() {
 // Reset the circuit breaker.
 func (cb *CircuitBreaker) Reset() {
 	cb.hardTrip = false
-	cb.lastFailureTime = nil
 	cb.resetTimeout = nil
 
 	cb.config.ResetBackoff.Reset()
