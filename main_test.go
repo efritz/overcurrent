@@ -4,15 +4,18 @@ import (
 	"testing"
 
 	"github.com/aphistic/sweet"
+	junit "github.com/aphistic/sweet-junit"
 	. "github.com/onsi/gomega"
 )
 
-func Test(t *testing.T) {
-	sweet.T(func(s *sweet.S) {
-		RegisterFailHandler(sweet.GomegaFail)
+func TestMain(m *testing.M) {
+	RegisterFailHandler(sweet.GomegaFail)
 
-		s.RunSuite(t, &TripSuite{})
-		s.RunSuite(t, &FailureSuite{})
-		s.RunSuite(t, &BreakerSuite{})
+	sweet.Run(m, func(s *sweet.S) {
+		s.RegisterPlugin(junit.NewPlugin())
+
+		s.AddSuite(&TripSuite{})
+		s.AddSuite(&FailureSuite{})
+		s.AddSuite(&BreakerSuite{})
 	})
 }
