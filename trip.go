@@ -78,7 +78,6 @@ func (tc *ConsecutiveFailureTripCondition) ShouldTrip() bool {
 // NewWindowFailureTripCondition creates a WindowFailureTripCondition.
 func NewWindowFailureTripCondition(window time.Duration, threshold int) TripCondition {
 	return newWindowFailureTripConditionWithClock(window, threshold, glock.NewRealClock())
-
 }
 
 func newWindowFailureTripConditionWithClock(window time.Duration, threshold int, clock glock.Clock) TripCondition {

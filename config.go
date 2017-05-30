@@ -24,15 +24,15 @@ const (
 	DefaultInvocationTimeout = 100 * time.Millisecond
 
 	// DefaultHalfClosedRetryProbability is the probability that
-	// the function shoudl be called while the CircuitBreaker is
+	// the function should be called while the CircuitBreaker is
 	// in half-closed state used by DefaultCircuitBreakerConfig.
 	DefaultHalfClosedRetryProbability = 0.5
 )
 
-// DefaultCircuitBreakerConfig creates a circuit breaker config usign the
+// DefaultCircuitBreakerConfig creates a circuit breaker config using the
 // default values for timeouts and half-closed retry probability, a constant
 // retry backoff of 1000ms, an any-error failure interpreter, and a trip
-// condition which fires only after five ocnsecutive failures.
+// condition which fires only after five consecutive failures.
 func DefaultCircuitBreakerConfig() *CircuitBreakerConfig {
 	return &CircuitBreakerConfig{
 		InvocationTimeout:          DefaultInvocationTimeout,
