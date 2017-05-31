@@ -85,15 +85,25 @@ func (cb *CircuitBreaker) ShouldTry() bool {
 		cb.resetTimeout = &reset
 	}
 
-	if cb.lastFailureTime != nil {
-		if cb.clock.Now().Sub(*cb.lastFailureTime) >= *cb.resetTimeout {
-			cb.state = halfClosedState
-			return rand.Float64() < cb.config.HalfClosedRetryProbability
-		}
+	if cb.resetTimeoutElapsed() {
+		cb.state = halfClosedState
+		return rand.Float64() < cb.config.HalfClosedRetryProbability
 	}
 
 	cb.state = openState
 	return false
+}
+
+func (cb *CircuitBreaker) resetTimeoutElapsed() bool {
+	if cb.state != openState {
+		return false
+	}
+
+	if cb.lastFailureTime == nil || cb.resetTimeout == nil {
+		return false
+	}
+
+	return cb.clock.Now().Sub(*cb.lastFailureTime) >= *cb.resetTimeout
 }
 
 // MarkResult takes the result of the protected section and marks it as a success if

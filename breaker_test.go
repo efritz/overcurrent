@@ -74,7 +74,6 @@ func (s *BreakerSuite) TestTimeoutTrip(t *testing.T) {
 }
 
 func (s *BreakerSuite) TestTimeoutDisabled(t *testing.T) {
-
 	var (
 		afterChan = make(chan time.Time)
 		clock     = glock.NewMockClockWithAfterChan(afterChan)
@@ -251,6 +250,51 @@ func (s *BreakerSuite) TestHardReset(t *testing.T) {
 	Expect(breaker.Call(nilFunc)).To(Equal(ErrCircuitOpen))
 	breaker.Reset()
 	Expect(breaker.Call(nilFunc)).To(BeNil())
+}
+
+//
+// Detailed in Issue #3
+//
+
+func (s *BreakerSuite) TestTripAfterSuccess(t *testing.T) {
+	config := &CircuitBreakerConfig{
+		HalfClosedRetryProbability: 1.0,
+		ResetBackoff:               backoff.NewConstantBackoff(time.Second),
+		FailureInterpreter:         NewAnyErrorFailureInterpreter(),
+		TripCondition:              NewPercentageFailureTripCondition(100, 0.5),
+	}
+
+	clock := glock.NewMockClock()
+	breaker := newCircuitBreakerWithClock(config, clock)
+
+	for i := 0; i < 40; i++ {
+		breaker.MarkResult(nil)
+	}
+
+	for i := 0; i < 60; i++ {
+		breaker.MarkResult(fmt.Errorf("utoh"))
+	}
+
+	Expect(breaker.ShouldTry()).To(BeFalse())
+	clock.Advance(time.Minute)
+	Expect(breaker.ShouldTry()).To(BeTrue())
+
+	// Before the bug was patched, it was possible to get into a situation
+	// where a nil result can cause the breaker to trip again, and the state
+	// of the breaker made it so that the condition which determined when the
+	// half-closed state was entered was indefinitely false.
+
+	for i := 0; i < 50; i++ {
+		breaker.MarkResult(nil)
+		Expect(breaker.ShouldTry()).To(BeFalse())
+		clock.Advance(time.Minute)
+		Expect(breaker.ShouldTry()).To(BeTrue())
+	}
+
+	breaker.MarkResult(nil)
+	Expect(breaker.ShouldTry()).To(BeTrue())
+	Expect(breaker.ShouldTry()).To(BeTrue())
+	Expect(breaker.ShouldTry()).To(BeTrue())
 }
 
 //
