@@ -38,13 +38,16 @@ func (s *BreakerSuite) TestTimeout(t *testing.T) {
 		breaker = newCircuitBreakerWithClock(testConfig(), clock)
 	)
 
-	clock.Advance(time.Minute)
+	go func() {
+		// Ensure after was called before advancing
+		for len(clock.GetAfterArgs()) == 0 {
+			<-time.After(time.Millisecond)
+		}
+
+		clock.Advance(time.Minute)
+	}()
 
 	Expect(breaker.Call(blockingFunc)).To(Equal(ErrInvocationTimeout))
-
-	afterArgs := clock.GetAfterArgs()
-	Expect(afterArgs).To(HaveLen(1))
-	Expect(afterArgs[0]).To(Equal(time.Minute))
 }
 
 func (s *BreakerSuite) TestTimeoutTrip(t *testing.T) {
@@ -55,6 +58,11 @@ func (s *BreakerSuite) TestTimeoutTrip(t *testing.T) {
 
 	go func() {
 		for i := 0; i < 5; i++ {
+			// Ensure after was called before advancing
+			for len(clock.GetAfterArgs()) == 0 {
+				<-time.After(time.Millisecond)
+			}
+
 			clock.Advance(time.Minute)
 		}
 	}()
@@ -79,7 +87,14 @@ func (s *BreakerSuite) TestTimeoutDisabled(t *testing.T) {
 		return nil
 	}
 
-	clock.Advance(time.Minute)
+	go func() {
+		// Ensure after was called before advancing
+		for len(clock.GetAfterArgs()) == 0 {
+			<-time.After(time.Millisecond)
+		}
+
+		clock.Advance(time.Minute)
+	}()
 
 	Expect(breaker.Call(fn)).To(Equal(ErrInvocationTimeout))
 
