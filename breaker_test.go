@@ -34,15 +34,11 @@ func (s *BreakerSuite) TestNaturalErrorTrip(t *testing.T) {
 
 func (s *BreakerSuite) TestTimeout(t *testing.T) {
 	var (
-		afterChan = make(chan time.Time)
-		clock     = glock.NewMockClockWithAfterChan(afterChan)
-		breaker   = newCircuitBreakerWithClock(testConfig(), clock)
+		clock   = glock.NewMockClock()
+		breaker = newCircuitBreakerWithClock(testConfig(), clock)
 	)
 
-	go func() {
-		defer close(afterChan)
-		afterChan <- clock.Now()
-	}()
+	clock.Advance(time.Minute)
 
 	Expect(breaker.Call(blockingFunc)).To(Equal(ErrInvocationTimeout))
 
@@ -53,16 +49,13 @@ func (s *BreakerSuite) TestTimeout(t *testing.T) {
 
 func (s *BreakerSuite) TestTimeoutTrip(t *testing.T) {
 	var (
-		afterChan = make(chan time.Time)
-		clock     = glock.NewMockClockWithAfterChan(afterChan)
-		breaker   = newCircuitBreakerWithClock(testConfig(), clock)
+		clock   = glock.NewMockClock()
+		breaker = newCircuitBreakerWithClock(testConfig(), clock)
 	)
 
 	go func() {
-		defer close(afterChan)
-
 		for i := 0; i < 5; i++ {
-			afterChan <- clock.Now()
+			clock.Advance(time.Minute)
 		}
 	}()
 
@@ -75,11 +68,10 @@ func (s *BreakerSuite) TestTimeoutTrip(t *testing.T) {
 
 func (s *BreakerSuite) TestTimeoutDisabled(t *testing.T) {
 	var (
-		afterChan = make(chan time.Time)
-		clock     = glock.NewMockClockWithAfterChan(afterChan)
-		config    = testConfig()
-		breaker   = newCircuitBreakerWithClock(config, clock)
-		sync      = make(chan time.Time)
+		clock   = glock.NewMockClock()
+		config  = testConfig()
+		breaker = newCircuitBreakerWithClock(config, clock)
+		sync    = make(chan time.Time)
 	)
 
 	fn := func() error {
@@ -87,10 +79,7 @@ func (s *BreakerSuite) TestTimeoutDisabled(t *testing.T) {
 		return nil
 	}
 
-	go func() {
-		defer close(afterChan)
-		afterChan <- clock.Now()
-	}()
+	clock.Advance(time.Minute)
 
 	Expect(breaker.Call(fn)).To(Equal(ErrInvocationTimeout))
 
@@ -101,13 +90,11 @@ func (s *BreakerSuite) TestTimeoutDisabled(t *testing.T) {
 
 func (s *BreakerSuite) TestHalfOpenFailure(t *testing.T) {
 	var (
-		config    = testConfig()
-		afterChan = make(chan time.Time)
-		clock     = glock.NewMockClockWithAfterChan(afterChan)
-		breaker   = newCircuitBreakerWithClock(config, clock)
+		config  = testConfig()
+		clock   = glock.NewMockClock()
+		breaker = newCircuitBreakerWithClock(config, clock)
 	)
 
-	defer close(afterChan)
 	config.HalfClosedRetryProbability = 1
 
 	for i := 0; i < 5; i++ {
@@ -124,13 +111,11 @@ func (s *BreakerSuite) TestHalfOpenFailure(t *testing.T) {
 
 func (s *BreakerSuite) TestHalfOpenReset(t *testing.T) {
 	var (
-		config    = testConfig()
-		afterChan = make(chan time.Time)
-		clock     = glock.NewMockClockWithAfterChan(afterChan)
-		breaker   = newCircuitBreakerWithClock(config, clock)
+		config  = testConfig()
+		clock   = glock.NewMockClock()
+		breaker = newCircuitBreakerWithClock(config, clock)
 	)
 
-	defer close(afterChan)
 	config.HalfClosedRetryProbability = 1
 
 	for i := 0; i < 5; i++ {
@@ -167,13 +152,11 @@ func (s *BreakerSuite) TestHalfOpenProbability(t *testing.T) {
 
 func runHalfOpenProbabilityTrial(probability float64) (called bool) {
 	var (
-		config    = testConfig()
-		afterChan = make(chan time.Time)
-		clock     = glock.NewMockClockWithAfterChan(afterChan)
-		breaker   = newCircuitBreakerWithClock(config, clock)
+		config  = testConfig()
+		clock   = glock.NewMockClock()
+		breaker = newCircuitBreakerWithClock(config, clock)
 	)
 
-	defer close(afterChan)
 	config.HalfClosedRetryProbability = probability
 	config.TripCondition = NewConsecutiveFailureTripCondition(1)
 
@@ -184,10 +167,9 @@ func runHalfOpenProbabilityTrial(probability float64) (called bool) {
 
 func (s *BreakerSuite) TestResetBackoff(t *testing.T) {
 	var (
-		config    = testConfig()
-		afterChan = make(chan time.Time)
-		clock     = glock.NewMockClockWithAfterChan(afterChan)
-		breaker   = newCircuitBreakerWithClock(config, clock)
+		config  = testConfig()
+		clock   = glock.NewMockClock()
+		breaker = newCircuitBreakerWithClock(config, clock)
 	)
 
 	config.HalfClosedRetryProbability = 1
@@ -222,12 +204,9 @@ func (s *BreakerSuite) TestResetBackoff(t *testing.T) {
 
 func (s *BreakerSuite) TestHardTrip(t *testing.T) {
 	var (
-		afterChan = make(chan time.Time)
-		clock     = glock.NewMockClockWithAfterChan(afterChan)
-		breaker   = newCircuitBreakerWithClock(testConfig(), clock)
+		clock   = glock.NewMockClock()
+		breaker = newCircuitBreakerWithClock(testConfig(), clock)
 	)
-
-	defer close(afterChan)
 
 	Expect(breaker.Call(nilFunc)).To(BeNil())
 	breaker.Trip()
