@@ -29,8 +29,10 @@ which defines structures for creating backoff interval generator.
 
 ## Example
 
-First, create an instance of a `Breaker` with the following customizable config
-parameters. The `InvocationTimeout` specifies how long a protected function can
+First, create an instance of a `Breaker` with any of the following configuration
+functions supplied. A circuit breaker can be created with all default parameters.
+
+The `InvocationTimeout` specifies how long a protected function can
 run for before returning an error (zero allows for unbounded runtime).
 
 The `ResetBackoff` specifies how long the circuit breaker stays in the open state
@@ -44,13 +46,13 @@ half-closed state will attempt to retry instead of immediately returning a
 `CircuitOpenError`.
 
 ```go
-breaker := NewCircuitBreaker(&CircuitBreakerConfig {
-	InvocationTimeout:          50 * time.Milliecond,
-	ResetBackoff:               backoff.NewConstantBackoff(1 * time.Second),
-	HalfClosedRetryProbability: 0.1,
-	FailureInterpreter:         NewAnyErrorFailureInterpreter(),
-	TripCondition:              NewConsecutiveFailureTripCondition(5),
-})
+breaker := NewCircuitBreaker(
+	WithInvocationTimeout(50 * time.Millisecond),
+	WithResetBackoff(backoff.NewConstantBackoff(1 * time.Second)),
+	WithHalfClosedRetryProbability(0.1),
+	WithFailureInterpreter(NewAnyErrorFailureInterpreter()),
+	WithTripCondition(NewConsecutiveFailureTripCondition(5)),
+)
 ```
 
 The `FailureInterpreter` determines which errors returned from the protected
