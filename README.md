@@ -29,7 +29,7 @@ which defines structures for creating backoff interval generator.
 
 ## Example
 
-First, create an instance of a `Breaker` with any of the following configuration
+First, create a circuit breaker instance with any of the following configuration
 functions supplied. A circuit breaker can be created with all default parameters.
 
 The `InvocationTimeout` specifies how long a protected function can
