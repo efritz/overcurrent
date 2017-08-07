@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/efritz/backoff"
 	"github.com/efritz/glock"
 )
 
@@ -12,14 +13,45 @@ type (
 	// CircuitBreaker protects the invocation of a function and monitors failures.
 	// After a certain failure threshold is reached, future invocations will instead
 	// return an ErrErrCircuitOpen instead of attempting to invoke the function again.
-	CircuitBreaker struct {
-		config          *CircuitBreakerConfig
-		clock           glock.Clock
-		state           circuitState
-		hardTrip        bool
-		lastFailureTime *time.Time
-		resetTimeout    *time.Duration
+	CircuitBreaker interface {
+		// Trip manually trips the circuit breaker. The circuit breaker will remain open
+		// until it is manually reset.
+		Trip()
+
+		// Reset the circuit breaker.
+		Reset()
+
+		// ShouldTry returns true if the circuit breaker is closed or half-closed with
+		// some probability. Successive calls to this method may yield different results
+		// depending on the registered trip condition.
+		ShouldTry() bool
+
+		// MarkResult takes the result of the protected section and marks it as a success if
+		// the error is nil or if the failure interpreter decides not to trip on this error.
+		MarkResult(err error) bool
+
+		// Call attempts to call the given function if the circuit breaker is closed, or if
+		// the circuit breaker is half-closed (with some probability). Otherwise, return an
+		// ErrCircuitOpen. If the function times out, the circuit breaker will fail with an
+		// ErrInvocationTimeout. If the function is invoked and yields a value before the
+		// timeout elapses, that value is returned.
+		Call(f func() error) error
 	}
+
+	circuitBreaker struct {
+		invocationTimeout          time.Duration
+		halfClosedRetryProbability float64
+		resetBackoff               backoff.Backoff
+		failureInterpreter         FailureInterpreter
+		tripCondition              TripCondition
+		clock                      glock.Clock
+		state                      circuitState
+		hardTrip                   bool
+		lastFailureTime            *time.Time
+		resetTimeout               *time.Duration
+	}
+
+	BreakerConfig func(*circuitBreaker)
 
 	circuitState int
 )
@@ -30,71 +62,96 @@ const (
 	halfClosedState                     // Cautious, probabilistic retry state
 )
 
-var (
-	// ErrCircuitOpen occurs when the Call method fails immediately.
-	ErrCircuitOpen = fmt.Errorf("circuit is open")
-)
+// ErrCircuitOpen occurs when the Call method fails immediately.
+var ErrCircuitOpen = fmt.Errorf("circuit is open")
 
-// NewCircuitBreaker creates a CircuitBreaker with the given configuration.
-func NewCircuitBreaker(config *CircuitBreakerConfig) *CircuitBreaker {
-	return newCircuitBreakerWithClock(config, glock.NewRealClock())
-}
-
-func newCircuitBreakerWithClock(config *CircuitBreakerConfig, clock glock.Clock) *CircuitBreaker {
-	return &CircuitBreaker{
-		config: config,
-		clock:  clock,
-		state:  closedState,
+// NewCircuitBreaker creates a new CircuitBreaker.
+func NewCircuitBreaker(configs ...BreakerConfig) CircuitBreaker {
+	breaker := &circuitBreaker{
+		invocationTimeout:          100 * time.Millisecond,
+		halfClosedRetryProbability: 0.5,
+		resetBackoff:               backoff.NewConstantBackoff(1000 * time.Millisecond),
+		failureInterpreter:         NewAnyErrorFailureInterpreter(),
+		tripCondition:              NewConsecutiveFailureTripCondition(5),
+		clock:                      glock.NewRealClock(),
+		state:                      closedState,
 	}
+
+	for _, config := range configs {
+		config(breaker)
+	}
+
+	return breaker
 }
 
-// Trip manually trips the circuit breaker. The circuit breaker will remain open
-// until it is manually reset.
-func (cb *CircuitBreaker) Trip() {
+func WithInvocationTimeout(timeout time.Duration) BreakerConfig {
+	return func(cb *circuitBreaker) { cb.invocationTimeout = timeout }
+}
+
+func WithHalfClosedRetryProbability(probability float64) BreakerConfig {
+	return func(cb *circuitBreaker) { cb.halfClosedRetryProbability = probability }
+}
+
+func WithResetBackoff(resetBackoff backoff.Backoff) BreakerConfig {
+	return func(cb *circuitBreaker) { cb.resetBackoff = resetBackoff }
+}
+
+func WithFailureInterpreter(failureInterpreter FailureInterpreter) BreakerConfig {
+	return func(cb *circuitBreaker) { cb.failureInterpreter = failureInterpreter }
+}
+
+func WithTripCondition(tripCondition TripCondition) BreakerConfig {
+	return func(cb *circuitBreaker) { cb.tripCondition = tripCondition }
+}
+
+func withClock(clock glock.Clock) BreakerConfig {
+	return func(cb *circuitBreaker) { cb.clock = clock }
+}
+
+//
+// Breaker Implementation
+
+func (cb *circuitBreaker) Trip() {
 	cb.hardTrip = true
 }
 
-// Reset the circuit breaker.
-func (cb *CircuitBreaker) Reset() {
+func (cb *circuitBreaker) Reset() {
 	cb.hardTrip = false
 	cb.resetTimeout = nil
 
-	cb.config.ResetBackoff.Reset()
-	cb.config.TripCondition.Success()
+	cb.resetBackoff.Reset()
+	cb.tripCondition.Success()
 }
 
-// ShouldTry returns true if the circuit breaker is closed or half-closed with
-// some probability. Successive calls to this method may yield different results
-// depending on the registered trip condition.
-func (cb *CircuitBreaker) ShouldTry() bool {
+func (cb *circuitBreaker) ShouldTry() bool {
 	if cb.hardTrip {
 		return false
 	}
 
-	if !cb.config.TripCondition.ShouldTrip() {
+	if !cb.tripCondition.ShouldTrip() {
 		cb.state = closedState
 		return true
 	}
 
 	if cb.state == closedState {
-		cb.config.ResetBackoff.Reset()
+		cb.resetBackoff.Reset()
 	}
 
 	if cb.state != openState {
-		reset := cb.config.ResetBackoff.NextInterval()
+		reset := cb.resetBackoff.NextInterval()
 		cb.resetTimeout = &reset
 	}
 
 	if cb.resetTimeoutElapsed() {
 		cb.state = halfClosedState
-		return rand.Float64() < cb.config.HalfClosedRetryProbability
+		return rand.Float64() < cb.halfClosedRetryProbability
 	}
 
 	cb.state = openState
 	return false
 }
 
-func (cb *CircuitBreaker) resetTimeoutElapsed() bool {
+func (cb *circuitBreaker) resetTimeoutElapsed() bool {
 	if cb.state != openState {
 		return false
 	}
@@ -106,13 +163,11 @@ func (cb *CircuitBreaker) resetTimeoutElapsed() bool {
 	return cb.clock.Now().Sub(*cb.lastFailureTime) >= *cb.resetTimeout
 }
 
-// MarkResult takes the result of the protected section and marks it as a success if
-// the error is nil or if the failure interpreter decides not to trip on this error.
-func (cb *CircuitBreaker) MarkResult(err error) bool {
-	if err != nil && cb.config.FailureInterpreter.ShouldTrip(err) {
+func (cb *circuitBreaker) MarkResult(err error) bool {
+	if err != nil && cb.failureInterpreter.ShouldTrip(err) {
 		now := cb.clock.Now()
 		cb.lastFailureTime = &now
-		cb.config.TripCondition.Failure()
+		cb.tripCondition.Failure()
 		return false
 	}
 
@@ -120,17 +175,12 @@ func (cb *CircuitBreaker) MarkResult(err error) bool {
 	return true
 }
 
-// Call attempts to call the given function if the circuit breaker is closed, or if
-// the circuit breaker is half-closed (with some probability). Otherwise, return an
-// ErrCircuitOpen. If the function times out, the circuit breaker will fail with an
-// ErrInvocationTimeout. If the function is invoked and yields a value before the
-// timeout elapses, that value is returned.
-func (cb *CircuitBreaker) Call(f func() error) error {
+func (cb *circuitBreaker) Call(f func() error) error {
 	if !cb.ShouldTry() {
 		return ErrCircuitOpen
 	}
 
-	if err := callWithTimeout(f, cb.clock, cb.config.InvocationTimeout); !cb.MarkResult(err) {
+	if err := callWithTimeout(f, cb.clock, cb.invocationTimeout); !cb.MarkResult(err) {
 		return err
 	}
 
