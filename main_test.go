@@ -17,5 +17,6 @@ func TestMain(m *testing.M) {
 		s.AddSuite(&TripSuite{})
 		s.AddSuite(&FailureSuite{})
 		s.AddSuite(&BreakerSuite{})
+		s.AddSuite(&TimeoutSuite{})
 	})
 }

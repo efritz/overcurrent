@@ -31,7 +31,7 @@ func callWithTimeout(f BreakerFunc, clock glock.Clock, timeout time.Duration) er
 }
 
 func callWithResultChan(f BreakerFunc, ctx context.Context) <-chan error {
-	ch := make(chan error)
+	ch := make(chan error, 1)
 
 	go func() {
 		defer close(ch)
