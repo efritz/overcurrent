@@ -14,13 +14,11 @@ import (
 type BreakerSuite struct{}
 
 func (s *BreakerSuite) TestSuccess(t sweet.T) {
-	breaker := NewCircuitBreaker(testConfig())
-	Expect(breaker.Call(nilFunc)).To(BeNil())
+	Expect(NewCircuitBreaker(testConfig()).Call(nilFunc)).To(BeNil())
 }
 
 func (s *BreakerSuite) TestNaturalError(t sweet.T) {
-	breaker := NewCircuitBreaker(testConfig())
-	Expect(breaker.Call(errFunc)).To(Equal(errTest))
+	Expect(NewCircuitBreaker(testConfig()).Call(errFunc)).To(Equal(errTest))
 }
 
 func (s *BreakerSuite) TestNaturalErrorTrip(t sweet.T) {
@@ -40,12 +38,7 @@ func (s *BreakerSuite) TestTimeout(t sweet.T) {
 	)
 
 	go func() {
-		// Ensure after was called before advancing
-		for len(clock.GetAfterArgs()) == 0 {
-			<-time.After(time.Millisecond)
-		}
-
-		clock.Advance(time.Minute)
+		clock.BlockingAdvance(time.Minute)
 	}()
 
 	Expect(breaker.Call(blockingFunc)).To(Equal(ErrInvocationTimeout))
@@ -59,12 +52,7 @@ func (s *BreakerSuite) TestTimeoutTrip(t sweet.T) {
 
 	go func() {
 		for i := 0; i < 5; i++ {
-			// Ensure after was called before advancing
-			for len(clock.GetAfterArgs()) == 0 {
-				<-time.After(time.Millisecond)
-			}
-
-			clock.Advance(time.Minute)
+			clock.BlockingAdvance(time.Minute)
 		}
 	}()
 
@@ -176,12 +164,7 @@ func (s *BreakerSuite) TestCallAsyncTimeout(t sweet.T) {
 	)
 
 	go func() {
-		// Ensure after was called before advancing
-		for len(clock.GetAfterArgs()) == 0 {
-			<-time.After(time.Millisecond)
-		}
-
-		clock.Advance(time.Minute)
+		clock.BlockingAdvance(time.Minute)
 	}()
 
 	errors := breaker.CallAsync(blockingFunc)
