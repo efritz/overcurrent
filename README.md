@@ -76,8 +76,8 @@ The `TripCondition` determines, based on recent failure history, when the
 breaker should trip. This interface can be customized to trip after a number
 of failures in a row, number of failures in a given time span, fail rate, etc.
 
-The breaker can be explicitly tripped and reset via the `Trip` and `Reset` methods. 
-If a breaker is manually tripped, then it will remain in open state until it is 
+The breaker can be explicitly tripped and reset via the `Trip` and `Reset` methods.
+If a breaker is manually tripped, then it will remain in open state until it is
 manually reset (it will never transition to the half-closed state).
 
 ### Function API
@@ -90,8 +90,15 @@ and completes (successfully or unsuccessfully), the method returns the error tha
 the function returns.
 
 ```go
-err := breaker.Call(func() error {
-	resp, err := http.Get("http://example.com")
+err := breaker.Call(func(ctx context.Context) error {
+	req, err := http.NewRequest("GET", "http://example.com", nil)
+	if err != nil {
+		return err
+	}
+
+	// Wrap in context passed to function so that the request
+	// is canceled if the function exceeds the invocation max.
+	resp, err := http.DefaultClient.Do(r.WithContext(ctx))
 	if err != nil {
 		return err
 	}
@@ -115,16 +122,9 @@ if err == nil {
 to each invocation of `Call`, as opposed to begin registered with the circuit
 breaker at initialization. This is to increase the flexibility of the API so
 the input to the function can easily change on each invocation. It is **not**
-advised that several disparate functions are passed to the same breaker - 
-failures from one function will influence the other in ways that are not 
+advised that several disparate functions are passed to the same breaker -
+failures from one function will influence the other in ways that are not
 intuitive.
-
-*Caveat:* If the runtime of a call exceeds the `InvocationTimeout` parameter,
-the return value of the function will be ignored, but the function execution
-will not be *halted*. This may be a cause of leaking resources in some cases,
-such as network dialing. In these cases, it is better to consider a timeout
-as part of the function being called, and make sure the failure interpreter
-is aware of a timeout possibility from within the function.
 
 ### Non-Function API
 
