@@ -3,9 +3,9 @@ package overcurrent
 import (
 	"context"
 	"fmt"
-	"testing"
 	"time"
 
+	"github.com/aphistic/sweet"
 	"github.com/efritz/backoff"
 	"github.com/efritz/glock"
 	. "github.com/onsi/gomega"
@@ -13,17 +13,17 @@ import (
 
 type BreakerSuite struct{}
 
-func (s *BreakerSuite) TestSuccess(t *testing.T) {
+func (s *BreakerSuite) TestSuccess(t sweet.T) {
 	breaker := NewCircuitBreaker(testConfig())
 	Expect(breaker.Call(nilFunc)).To(BeNil())
 }
 
-func (s *BreakerSuite) TestNaturalError(t *testing.T) {
+func (s *BreakerSuite) TestNaturalError(t sweet.T) {
 	breaker := NewCircuitBreaker(testConfig())
 	Expect(breaker.Call(errFunc)).To(Equal(errTest))
 }
 
-func (s *BreakerSuite) TestNaturalErrorTrip(t *testing.T) {
+func (s *BreakerSuite) TestNaturalErrorTrip(t sweet.T) {
 	breaker := NewCircuitBreaker(testConfig())
 
 	for i := 0; i < 5; i++ {
@@ -33,7 +33,7 @@ func (s *BreakerSuite) TestNaturalErrorTrip(t *testing.T) {
 	Expect(breaker.Call(errFunc)).To(Equal(ErrCircuitOpen))
 }
 
-func (s *BreakerSuite) TestTimeout(t *testing.T) {
+func (s *BreakerSuite) TestTimeout(t sweet.T) {
 	var (
 		clock   = glock.NewMockClock()
 		breaker = NewCircuitBreaker(testConfig(), withClock(clock))
@@ -51,7 +51,7 @@ func (s *BreakerSuite) TestTimeout(t *testing.T) {
 	Expect(breaker.Call(blockingFunc)).To(Equal(ErrInvocationTimeout))
 }
 
-func (s *BreakerSuite) TestTimeoutTrip(t *testing.T) {
+func (s *BreakerSuite) TestTimeoutTrip(t sweet.T) {
 	var (
 		clock   = glock.NewMockClock()
 		breaker = NewCircuitBreaker(testConfig(), withClock(clock))
@@ -75,7 +75,7 @@ func (s *BreakerSuite) TestTimeoutTrip(t *testing.T) {
 	Expect(breaker.Call(blockingFunc)).To(Equal(ErrCircuitOpen))
 }
 
-func (s *BreakerSuite) TestTimeoutDisabled(t *testing.T) {
+func (s *BreakerSuite) TestTimeoutDisabled(t sweet.T) {
 	var (
 		clock   = glock.NewMockClock()
 		sync    = make(chan time.Time)
@@ -96,7 +96,7 @@ func (s *BreakerSuite) TestTimeoutDisabled(t *testing.T) {
 	Expect(clock.GetAfterArgs()).To(HaveLen(0))
 }
 
-func (s *BreakerSuite) TestHalfOpenFailure(t *testing.T) {
+func (s *BreakerSuite) TestHalfOpenFailure(t sweet.T) {
 	var (
 		clock   = glock.NewMockClock()
 		breaker = NewCircuitBreaker(
@@ -118,7 +118,7 @@ func (s *BreakerSuite) TestHalfOpenFailure(t *testing.T) {
 	Expect(breaker.Call(nilFunc)).To(Equal(ErrCircuitOpen))
 }
 
-func (s *BreakerSuite) TestHalfOpenReset(t *testing.T) {
+func (s *BreakerSuite) TestHalfOpenReset(t sweet.T) {
 	var (
 		clock   = glock.NewMockClock()
 		breaker = NewCircuitBreaker(
@@ -144,7 +144,7 @@ var (
 	PROBAIBLITY = 0.25
 )
 
-func (s *BreakerSuite) TestHalfOpenProbability(t *testing.T) {
+func (s *BreakerSuite) TestHalfOpenProbability(t sweet.T) {
 	success := 0
 	failure := 0
 
@@ -176,7 +176,7 @@ func runHalfOpenProbabilityTrial(probability float64) (called bool) {
 	return breaker.Call(nilFunc) != ErrCircuitOpen
 }
 
-func (s *BreakerSuite) TestResetBackoff(t *testing.T) {
+func (s *BreakerSuite) TestResetBackoff(t sweet.T) {
 	var (
 		clock   = glock.NewMockClock()
 		breaker = NewCircuitBreaker(
@@ -214,7 +214,7 @@ func (s *BreakerSuite) TestResetBackoff(t *testing.T) {
 	}
 }
 
-func (s *BreakerSuite) TestHardTrip(t *testing.T) {
+func (s *BreakerSuite) TestHardTrip(t sweet.T) {
 	var (
 		clock   = glock.NewMockClock()
 		breaker = NewCircuitBreaker(testConfig(), withClock(clock))
@@ -231,7 +231,7 @@ func (s *BreakerSuite) TestHardTrip(t *testing.T) {
 	Expect(breaker.Call(nilFunc)).To(BeNil())
 }
 
-func (s *BreakerSuite) TestHardReset(t *testing.T) {
+func (s *BreakerSuite) TestHardReset(t sweet.T) {
 	breaker := NewCircuitBreaker(testConfig())
 
 	for i := 0; i < 5; i++ {
@@ -247,7 +247,7 @@ func (s *BreakerSuite) TestHardReset(t *testing.T) {
 // Detailed in Issue #3
 //
 
-func (s *BreakerSuite) TestTripAfterSuccess(t *testing.T) {
+func (s *BreakerSuite) TestTripAfterSuccess(t sweet.T) {
 	var (
 		clock   = glock.NewMockClock()
 		breaker = NewCircuitBreaker(

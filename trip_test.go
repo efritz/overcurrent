@@ -1,16 +1,16 @@
 package overcurrent
 
 import (
-	"testing"
 	"time"
 
+	"github.com/aphistic/sweet"
 	"github.com/efritz/glock"
 	. "github.com/onsi/gomega"
 )
 
 type TripSuite struct{}
 
-func (s *TripSuite) TestConsecutive(t *testing.T) {
+func (s *TripSuite) TestConsecutive(t sweet.T) {
 	tc := NewConsecutiveFailureTripCondition(25)
 	Expect(tc.ShouldTrip()).To(BeFalse())
 
@@ -23,7 +23,7 @@ func (s *TripSuite) TestConsecutive(t *testing.T) {
 	Expect(tc.ShouldTrip()).To(BeTrue())
 }
 
-func (s *TripSuite) TestConsecutiveBrokenChain(t *testing.T) {
+func (s *TripSuite) TestConsecutiveBrokenChain(t sweet.T) {
 	tc := NewConsecutiveFailureTripCondition(25)
 	Expect(tc.ShouldTrip()).To(BeFalse())
 
@@ -38,7 +38,7 @@ func (s *TripSuite) TestConsecutiveBrokenChain(t *testing.T) {
 	Expect(tc.ShouldTrip()).To(BeFalse())
 }
 
-func (s *TripSuite) TestWindow(t *testing.T) {
+func (s *TripSuite) TestWindow(t sweet.T) {
 	var (
 		clock = glock.NewMockClock()
 		tc    = newWindowFailureTripConditionWithClock(
@@ -78,7 +78,7 @@ func (s *TripSuite) TestWindow(t *testing.T) {
 	Expect(tc.ShouldTrip()).To(BeTrue())
 }
 
-func (s *TripSuite) TestPercentage(t *testing.T) {
+func (s *TripSuite) TestPercentage(t sweet.T) {
 	tc := NewPercentageFailureTripCondition(100, .75)
 
 	times(25, tc.Success)
@@ -86,14 +86,14 @@ func (s *TripSuite) TestPercentage(t *testing.T) {
 	Expect(tc.ShouldTrip()).To(BeTrue())
 }
 
-func (s *TripSuite) TestPercentageSmallWindow(t *testing.T) {
+func (s *TripSuite) TestPercentageSmallWindow(t sweet.T) {
 	tc := NewPercentageFailureTripCondition(100, .75)
 
 	times(50, tc.Failure)
 	Expect(tc.ShouldTrip()).To(BeFalse())
 }
 
-func (s *TripSuite) TestPercentageLogPushesOutSuccess(t *testing.T) {
+func (s *TripSuite) TestPercentageLogPushesOutSuccess(t sweet.T) {
 	tc := NewPercentageFailureTripCondition(100, .75)
 
 	times(25, tc.Success)
@@ -107,7 +107,7 @@ func (s *TripSuite) TestPercentageLogPushesOutSuccess(t *testing.T) {
 	Expect(tc.ShouldTrip()).To(BeFalse())
 }
 
-func (s *TripSuite) TestPercentageLogPushesOutFailure(t *testing.T) {
+func (s *TripSuite) TestPercentageLogPushesOutFailure(t sweet.T) {
 	tc := NewPercentageFailureTripCondition(100, .75)
 
 	times(75, tc.Failure)

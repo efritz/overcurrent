@@ -2,14 +2,14 @@ package overcurrent
 
 import (
 	"errors"
-	"testing"
 
+	"github.com/aphistic/sweet"
 	. "github.com/onsi/gomega"
 )
 
 type FailureSuite struct{}
 
-func (s *FailureSuite) TestAnyError(t *testing.T) {
+func (s *FailureSuite) TestAnyError(t sweet.T) {
 	var (
 		afi = NewAnyErrorFailureInterpreter()
 		err = errors.New("test error")

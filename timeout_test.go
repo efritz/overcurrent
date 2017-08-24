@@ -3,16 +3,16 @@ package overcurrent
 import (
 	"context"
 	"errors"
-	"testing"
 	"time"
 
+	"github.com/aphistic/sweet"
 	"github.com/efritz/glock"
 	. "github.com/onsi/gomega"
 )
 
 type TimeoutSuite struct{}
 
-func (s *TimeoutSuite) TestZeroTimeout(t *testing.T) {
+func (s *TimeoutSuite) TestZeroTimeout(t sweet.T) {
 	fn := func(ctx context.Context) error {
 		return nil
 	}
@@ -20,7 +20,7 @@ func (s *TimeoutSuite) TestZeroTimeout(t *testing.T) {
 	Expect(callWithTimeout(fn, nil, 0)).To(BeNil())
 }
 
-func (s *TimeoutSuite) TestNoError(t *testing.T) {
+func (s *TimeoutSuite) TestNoError(t sweet.T) {
 	var (
 		clock = glock.NewMockClock()
 		fn    = func(ctx context.Context) error {
@@ -35,7 +35,7 @@ func (s *TimeoutSuite) TestNoError(t *testing.T) {
 	Expect(args[0]).To(Equal(time.Minute))
 }
 
-func (s *TimeoutSuite) TestError(t *testing.T) {
+func (s *TimeoutSuite) TestError(t sweet.T) {
 	var (
 		clock = glock.NewMockClock()
 		fn    = func(ctx context.Context) error {
@@ -50,7 +50,7 @@ func (s *TimeoutSuite) TestError(t *testing.T) {
 	Expect(args[0]).To(Equal(time.Minute))
 }
 
-func (s *TimeoutSuite) TestsTimeout(t *testing.T) {
+func (s *TimeoutSuite) TestsTimeout(t sweet.T) {
 	var (
 		clock  = glock.NewMockClock()
 		sync   = make(chan struct{})
