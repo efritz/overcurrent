@@ -139,6 +139,55 @@ func (s *BreakerSuite) TestHalfOpenReset(t sweet.T) {
 	Expect(breaker.Call(nilFunc)).To(BeNil())
 }
 
+func (s *BreakerSuite) TestCallAsync(t sweet.T) {
+	var (
+		breaker = NewCircuitBreaker(testConfig())
+		errors  = breaker.CallAsync(nilFunc)
+	)
+
+	Eventually(errors).Should(Receive(BeNil()))
+	Eventually(errors).Should(BeClosed())
+}
+
+func (s *BreakerSuite) TestCallAsyncNaturalError(t sweet.T) {
+	var (
+		breaker = NewCircuitBreaker(testConfig())
+		errors  = breaker.CallAsync(errFunc)
+	)
+
+	Eventually(errors).Should(Receive(Equal(errTest)))
+}
+
+func (s *BreakerSuite) TestCallAsyncNaturalErrorTrip(t sweet.T) {
+	breaker := NewCircuitBreaker(testConfig())
+
+	for i := 0; i < 5; i++ {
+		Expect(breaker.Call(errFunc)).To(Equal(errTest))
+	}
+
+	errors := breaker.CallAsync(errFunc)
+	Eventually(errors).Should(Receive(Equal(ErrCircuitOpen)))
+}
+
+func (s *BreakerSuite) TestCallAsyncTimeout(t sweet.T) {
+	var (
+		clock   = glock.NewMockClock()
+		breaker = NewCircuitBreaker(testConfig(), withClock(clock))
+	)
+
+	go func() {
+		// Ensure after was called before advancing
+		for len(clock.GetAfterArgs()) == 0 {
+			<-time.After(time.Millisecond)
+		}
+
+		clock.Advance(time.Minute)
+	}()
+
+	errors := breaker.CallAsync(blockingFunc)
+	Eventually(errors).Should(Receive(Equal(ErrInvocationTimeout)))
+}
+
 var (
 	TRIALS      = 50000
 	PROBAIBLITY = 0.25
@@ -305,9 +354,7 @@ func errFunc(ctx context.Context) error {
 }
 
 func blockingFunc(ctx context.Context) error {
-	ch := make(chan struct{})
-	<-ch
-
+	<-make(chan struct{})
 	return nil
 }
 

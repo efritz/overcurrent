@@ -37,6 +37,11 @@ type (
 		// ErrInvocationTimeout. If the function is invoked and yields a value before the
 		// timeout elapses, that value is returned.
 		Call(f BreakerFunc) error
+
+		// CallAsync invokes the given function in a goroutine, returning a channel which
+		// may receive one non-nil error value and then close. The channel will close without
+		// writing a value on success.
+		CallAsync(f BreakerFunc) <-chan error
 	}
 
 	BreakerConfig func(*circuitBreaker)
@@ -187,4 +192,15 @@ func (cb *circuitBreaker) Call(f BreakerFunc) error {
 	}
 
 	return nil
+}
+
+func (cb *circuitBreaker) CallAsync(f BreakerFunc) <-chan error {
+	ch := make(chan error, 1)
+
+	go func() {
+		defer close(ch)
+		ch <- cb.Call(f)
+	}()
+
+	return ch
 }
