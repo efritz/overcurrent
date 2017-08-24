@@ -1,6 +1,7 @@
 package overcurrent
 
 import (
+	"context"
 	"fmt"
 	"math/rand"
 	"time"
@@ -35,8 +36,11 @@ type (
 		// ErrCircuitOpen. If the function times out, the circuit breaker will fail with an
 		// ErrInvocationTimeout. If the function is invoked and yields a value before the
 		// timeout elapses, that value is returned.
-		Call(f func() error) error
+		Call(f BreakerFunc) error
 	}
+
+	BreakerConfig func(*circuitBreaker)
+	BreakerFunc   func(ctx context.Context) error
 
 	circuitBreaker struct {
 		invocationTimeout          time.Duration
@@ -50,8 +54,6 @@ type (
 		lastFailureTime            *time.Time
 		resetTimeout               *time.Duration
 	}
-
-	BreakerConfig func(*circuitBreaker)
 
 	circuitState int
 )
@@ -175,7 +177,7 @@ func (cb *circuitBreaker) MarkResult(err error) bool {
 	return true
 }
 
-func (cb *circuitBreaker) Call(f func() error) error {
+func (cb *circuitBreaker) Call(f BreakerFunc) error {
 	if !cb.ShouldTry() {
 		return ErrCircuitOpen
 	}

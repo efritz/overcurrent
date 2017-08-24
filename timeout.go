@@ -1,6 +1,7 @@
 package overcurrent
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -12,13 +13,16 @@ var (
 	ErrInvocationTimeout = fmt.Errorf("invocation has timed out")
 )
 
-func callWithTimeout(f func() error, clock glock.Clock, timeout time.Duration) error {
+func callWithTimeout(f BreakerFunc, clock glock.Clock, timeout time.Duration) error {
 	if timeout == 0 {
-		return f()
+		return f(context.Background())
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	select {
-	case err := <-callWithResultChan(f):
+	case err := <-callWithResultChan(f, ctx):
 		return err
 
 	case <-clock.After(timeout):
@@ -26,12 +30,12 @@ func callWithTimeout(f func() error, clock glock.Clock, timeout time.Duration) e
 	}
 }
 
-func callWithResultChan(f func() error) <-chan error {
+func callWithResultChan(f BreakerFunc, ctx context.Context) <-chan error {
 	ch := make(chan error)
 
 	go func() {
-		ch <- f()
-		close(ch)
+		defer close(ch)
+		ch <- f(ctx)
 	}()
 
 	return ch

@@ -1,6 +1,7 @@
 package overcurrent
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -85,7 +86,7 @@ func (s *BreakerSuite) TestTimeoutDisabled(t *testing.T) {
 		)
 	)
 
-	fn := func() error {
+	fn := func(ctx context.Context) error {
 		<-sync
 		return nil
 	}
@@ -295,15 +296,15 @@ func (s *BreakerSuite) TestTripAfterSuccess(t *testing.T) {
 
 var errTest = fmt.Errorf("test error")
 
-func nilFunc() error {
+func nilFunc(ctx context.Context) error {
 	return nil
 }
 
-func errFunc() error {
+func errFunc(ctx context.Context) error {
 	return errTest
 }
 
-func blockingFunc() error {
+func blockingFunc(ctx context.Context) error {
 	ch := make(chan struct{})
 	<-ch
 
