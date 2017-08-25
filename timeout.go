@@ -22,21 +22,10 @@ func callWithTimeout(f BreakerFunc, clock glock.Clock, timeout time.Duration) er
 	defer cancel()
 
 	select {
-	case err := <-callWithResultChan(f, ctx):
+	case err := <-toErrChan(func() error { return f(ctx) }):
 		return err
 
 	case <-clock.After(timeout):
 		return ErrInvocationTimeout
 	}
-}
-
-func callWithResultChan(f BreakerFunc, ctx context.Context) <-chan error {
-	ch := make(chan error, 1)
-
-	go func() {
-		defer close(ch)
-		ch <- f(ctx)
-	}()
-
-	return ch
 }

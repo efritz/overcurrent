@@ -195,12 +195,5 @@ func (cb *circuitBreaker) Call(f BreakerFunc) error {
 }
 
 func (cb *circuitBreaker) CallAsync(f BreakerFunc) <-chan error {
-	ch := make(chan error, 1)
-
-	go func() {
-		defer close(ch)
-		ch <- cb.Call(f)
-	}()
-
-	return ch
+	return toErrChan(func() error { return cb.Call(f) })
 }
