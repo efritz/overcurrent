@@ -14,9 +14,9 @@ type (
 		Configure(name string, configs ...BreakerConfig) error
 
 		// Call will invoke `Call` on the breaker configured with the given name. If
-		// the breaker returns a non-nil error, the fallback function is invoked. This
-		// may mask the error from the breaker function, so it is wise to log this if
-		// it is of interest.
+		// the breaker returns a non-nil error, the fallback function is invoked with
+		// the error as the value. It may be the case that the fallback function is
+		// invoked without the breaker function failing (e.g. circuit open).
 		Call(name string, f BreakerFunc, fallback FallbackFunc) error
 
 		// CallAsync will create a channel that receives the error value from an similar
@@ -33,7 +33,7 @@ type (
 		breaker CircuitBreaker
 	}
 
-	FallbackFunc func() error
+	FallbackFunc func(error) error
 )
 
 var (
@@ -69,11 +69,7 @@ func (r *registry) Call(name string, f BreakerFunc, fallback FallbackFunc) error
 		return err
 	}
 
-	if err := wrapped.breaker.Call(f); err == nil || fallback == nil {
-		return err
-	}
-
-	return fallback()
+	return tryFallback(wrapped.breaker.Call(f), fallback)
 }
 
 func (r *registry) CallAsync(name string, f BreakerFunc, fallback FallbackFunc) <-chan error {
@@ -90,4 +86,12 @@ func (r *registry) getWrappedBreaker(name string) (*wrappedBreaker, error) {
 	}
 
 	return breaker, nil
+}
+
+func tryFallback(err error, fallback FallbackFunc) error {
+	if err != nil && fallback != nil {
+		return fallback(err)
+	}
+
+	return err
 }

@@ -53,7 +53,8 @@ func (s *RegistrySuite) TestErrorCallWithFallback(t sweet.T) {
 
 	err := r.Call("test", func(ctx context.Context) error {
 		return ex
-	}, func() error {
+	}, func(err error) error {
+		Expect(err).To(Equal(ex))
 		called = true
 		return nil
 	})
@@ -64,20 +65,21 @@ func (s *RegistrySuite) TestErrorCallWithFallback(t sweet.T) {
 
 func (s *RegistrySuite) TestFallbackError(t sweet.T) {
 	var (
-		r   = NewRegistry()
-		ex1 = errors.New("utoh 1")
-		ex2 = errors.New("utoh 2")
+		r    = NewRegistry()
+		err1 = errors.New("utoh 1")
+		err2 = errors.New("utoh 2")
 	)
 
 	r.Configure("test")
 
 	err := r.Call("test", func(ctx context.Context) error {
-		return ex1
-	}, func() error {
-		return ex2
+		return err1
+	}, func(err error) error {
+		Expect(err).To(Equal(err1))
+		return err2
 	})
 
-	Expect(err).To(Equal(ex2))
+	Expect(err).To(Equal(err2))
 }
 
 func (s *RegistrySuite) TestBreaker(t sweet.T) {
@@ -88,7 +90,7 @@ func (s *RegistrySuite) TestBreaker(t sweet.T) {
 
 	r.Configure("test", testConfig())
 
-	fallback := func() error {
+	fallback := func(err error) error {
 		callCount++
 		return nil
 	}
