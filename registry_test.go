@@ -3,6 +3,10 @@ package overcurrent
 import (
 	"context"
 	"errors"
+	"sync"
+	"time"
+
+	"github.com/efritz/glock"
 
 	"github.com/aphistic/sweet"
 	. "github.com/onsi/gomega"
@@ -102,6 +106,158 @@ func (s *RegistrySuite) TestBreaker(t sweet.T) {
 	Expect(r.Call("test", errFunc, nil)).To(Equal(ErrCircuitOpen))
 	Expect(r.Call("test", errFunc, fallback)).To(BeNil())
 	Expect(callCount).To(Equal(6))
+}
+
+func (s *RegistrySuite) TestConcurrency(t sweet.T) {
+	var (
+		r       = NewRegistry()
+		started = make(chan struct{}) // Signals start of f
+		block   = make(chan error, 5) // Blocks inside f
+		wg      = &sync.WaitGroup{}   // Signals end of f
+	)
+
+	defer close(started)
+
+	f := func() BreakerFunc {
+		return func(ctx context.Context) error {
+			defer wg.Done()
+			started <- struct{}{}
+			return <-block
+		}
+	}
+
+	r.Configure(
+		"test",
+		testConfig(),
+		WithMaxConcurrency(5),
+		WithMaxConcurrencyTimeout(0),
+	)
+
+	wg.Add(5)
+	r.CallAsync("test", f(), nil)
+	r.CallAsync("test", f(), nil)
+	r.CallAsync("test", f(), nil)
+	r.CallAsync("test", f(), nil)
+	r.CallAsync("test", f(), nil)
+
+	for i := 0; i < 5; i++ {
+		<-started
+	}
+
+	Expect(r.Call("test", nilFunc, func(err error) error {
+		Expect(err).To(Equal(ErrMaxConcurrency))
+		return nil
+	})).To(BeNil())
+
+	close(block)
+	wg.Wait()
+
+	Expect(r.Call("test", nilFunc, nil)).To(BeNil())
+}
+
+func (s *RegistrySuite) TestConcurrencyUnblocked(t sweet.T) {
+	var (
+		r       = NewRegistry()
+		started = make(chan struct{}) // Signals start of f
+		block   = make(chan error, 5) // Blocks inside f
+		wg      = &sync.WaitGroup{}   // Signals end of f
+		result  = make(chan error)
+	)
+
+	defer close(started)
+
+	f := func() BreakerFunc {
+		return func(ctx context.Context) error {
+			defer wg.Done()
+			started <- struct{}{}
+			return <-block
+		}
+	}
+
+	r.Configure(
+		"test",
+		testConfig(),
+		WithMaxConcurrency(5),
+		WithMaxConcurrencyTimeout(time.Minute),
+	)
+
+	wg.Add(5)
+	r.CallAsync("test", f(), nil)
+	r.CallAsync("test", f(), nil)
+	r.CallAsync("test", f(), nil)
+	r.CallAsync("test", f(), nil)
+	r.CallAsync("test", f(), nil)
+
+	for i := 0; i < 5; i++ {
+		<-started
+	}
+
+	go func() {
+		defer close(result)
+
+		result <- r.Call("test", nilFunc, func(err error) error {
+			Expect(err).To(Equal(ErrMaxConcurrency))
+			return nil
+		})
+	}()
+
+	Consistently(result).ShouldNot(Receive())
+	close(block)
+	Eventually(result).Should(Receive(BeNil()))
+}
+
+func (s *RegistrySuite) TestConcurrencyTimeout(t sweet.T) {
+	var (
+		clock   = glock.NewMockClock()
+		r       = newRegistryWithClock(clock)
+		started = make(chan struct{}) // Signals start of f
+		block   = make(chan error, 5) // Blocks inside f
+		wg      = &sync.WaitGroup{}   // Signals end of f
+		result  = make(chan error)
+	)
+
+	defer close(started)
+
+	f := func() BreakerFunc {
+		return func(ctx context.Context) error {
+			defer wg.Done()
+			started <- struct{}{}
+			return <-block
+		}
+	}
+
+	r.Configure(
+		"test",
+		testConfig(),
+		WithMaxConcurrency(5),
+		WithMaxConcurrencyTimeout(time.Minute),
+		withClock(clock),
+	)
+
+	wg.Add(5)
+	r.CallAsync("test", f(), nil)
+	r.CallAsync("test", f(), nil)
+	r.CallAsync("test", f(), nil)
+	r.CallAsync("test", f(), nil)
+	r.CallAsync("test", f(), nil)
+
+	for i := 0; i < 5; i++ {
+		<-started
+	}
+
+	go func() {
+		defer close(result)
+
+		result <- r.Call("test", nilFunc, func(err error) error {
+			Expect(err).To(Equal(ErrMaxConcurrency))
+			return nil
+		})
+	}()
+
+	Consistently(result).ShouldNot(Receive())
+	clock.Advance(time.Minute)
+	Eventually(result).Should(Receive(BeNil()))
+	close(block)
 }
 
 func (s *RegistrySuite) TestDoubleConfigure(t sweet.T) {

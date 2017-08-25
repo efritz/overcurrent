@@ -58,6 +58,8 @@ type (
 		hardTrip                   bool
 		lastFailureTime            *time.Time
 		resetTimeout               *time.Duration
+		maxConcurrency             int
+		maxConcurrencyTimeout      time.Duration
 	}
 
 	circuitState int
@@ -69,11 +71,20 @@ const (
 	halfClosedState                     // Cautious, probabilistic retry state
 )
 
-// ErrCircuitOpen occurs when the Call method fails immediately.
-var ErrCircuitOpen = fmt.Errorf("circuit is open")
+var (
+	// ErrCircuitOpen occurs when the Call method fails immediately.
+	ErrCircuitOpen = fmt.Errorf("circuit is open")
+
+	// ErrInvocationTimeout occurs when the method takes too long to execute.
+	ErrInvocationTimeout = fmt.Errorf("invocation has timed out")
+)
 
 // NewCircuitBreaker creates a new CircuitBreaker.
 func NewCircuitBreaker(configs ...BreakerConfig) CircuitBreaker {
+	return newCircuitBreaker(configs...)
+}
+
+func newCircuitBreaker(configs ...BreakerConfig) *circuitBreaker {
 	breaker := &circuitBreaker{
 		invocationTimeout:          100 * time.Millisecond,
 		halfClosedRetryProbability: 0.5,
@@ -82,6 +93,8 @@ func NewCircuitBreaker(configs ...BreakerConfig) CircuitBreaker {
 		tripCondition:              NewConsecutiveFailureTripCondition(5),
 		clock:                      glock.NewRealClock(),
 		state:                      closedState,
+		maxConcurrency:             100,
+		maxConcurrencyTimeout:      time.Millisecond * 100,
 	}
 
 	for _, config := range configs {
@@ -109,6 +122,14 @@ func WithFailureInterpreter(failureInterpreter FailureInterpreter) BreakerConfig
 
 func WithTripCondition(tripCondition TripCondition) BreakerConfig {
 	return func(cb *circuitBreaker) { cb.tripCondition = tripCondition }
+}
+
+func WithMaxConcurrency(maxConcurrency int) BreakerConfig {
+	return func(cb *circuitBreaker) { cb.maxConcurrency = maxConcurrency }
+}
+
+func WithMaxConcurrencyTimeout(timeout time.Duration) BreakerConfig {
+	return func(cb *circuitBreaker) { cb.maxConcurrencyTimeout = timeout }
 }
 
 func withClock(clock glock.Clock) BreakerConfig {
@@ -196,4 +217,25 @@ func (cb *circuitBreaker) Call(f BreakerFunc) error {
 
 func (cb *circuitBreaker) CallAsync(f BreakerFunc) <-chan error {
 	return toErrChan(func() error { return cb.Call(f) })
+}
+
+func callWithTimeout(f BreakerFunc, clock glock.Clock, timeout time.Duration) error {
+	if timeout == 0 {
+		return f(context.Background())
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	ch := toErrChan(func() error {
+		return f(ctx)
+	})
+
+	select {
+	case err := <-ch:
+		return err
+
+	case <-clock.After(timeout):
+		return ErrInvocationTimeout
+	}
 }

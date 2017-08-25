@@ -3,6 +3,8 @@ package overcurrent
 import (
 	"errors"
 	"sync"
+
+	"github.com/efritz/glock"
 )
 
 type (
@@ -27,10 +29,12 @@ type (
 	registry struct {
 		breakers map[string]*wrappedBreaker
 		mutex    *sync.RWMutex
+		clock    glock.Clock
 	}
 
 	wrappedBreaker struct {
-		breaker CircuitBreaker
+		breaker   *circuitBreaker
+		semaphore *semaphore
 	}
 
 	FallbackFunc func(error) error
@@ -39,12 +43,18 @@ type (
 var (
 	ErrAlreadyConfigured   = errors.New("breaker is already configured")
 	ErrBreakerUnconfigured = errors.New("breaker not configured")
+	ErrMaxConcurrency      = errors.New("breaker is at max concurrency")
 )
 
 func NewRegistry() Registry {
+	return newRegistryWithClock(glock.NewMockClock())
+}
+
+func newRegistryWithClock(clock glock.Clock) Registry {
 	return &registry{
 		breakers: map[string]*wrappedBreaker{},
 		mutex:    &sync.RWMutex{},
+		clock:    clock,
 	}
 }
 
@@ -56,8 +66,11 @@ func (r *registry) Configure(name string, configs ...BreakerConfig) error {
 		return ErrAlreadyConfigured
 	}
 
+	breaker := newCircuitBreaker(configs...)
+
 	r.breakers[name] = &wrappedBreaker{
-		breaker: NewCircuitBreaker(configs...),
+		breaker:   breaker,
+		semaphore: newSemaphore(r.clock, breaker.maxConcurrency),
 	}
 
 	return nil
@@ -69,7 +82,14 @@ func (r *registry) Call(name string, f BreakerFunc, fallback FallbackFunc) error
 		return err
 	}
 
-	return tryFallback(wrapped.breaker.Call(f), fallback)
+	if wrapped.semaphore.wait(wrapped.breaker.maxConcurrencyTimeout) {
+		defer wrapped.semaphore.signal()
+		err = wrapped.breaker.Call(f)
+	} else {
+		err = ErrMaxConcurrency
+	}
+
+	return tryFallback(err, fallback)
 }
 
 func (r *registry) CallAsync(name string, f BreakerFunc, fallback FallbackFunc) <-chan error {

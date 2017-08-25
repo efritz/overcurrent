@@ -18,7 +18,7 @@ func TestMain(m *testing.M) {
 		s.AddSuite(&FailureSuite{})
 		s.AddSuite(&BreakerSuite{})
 		s.AddSuite(&RegistrySuite{})
-		s.AddSuite(&TimeoutSuite{})
+		s.AddSuite(&SemaphoreSuite{})
 		s.AddSuite(&UtilSuite{})
 	})
 }

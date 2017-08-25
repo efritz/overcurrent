@@ -2,6 +2,7 @@ package overcurrent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -18,14 +19,14 @@ func (s *BreakerSuite) TestSuccess(t sweet.T) {
 }
 
 func (s *BreakerSuite) TestNaturalError(t sweet.T) {
-	Expect(NewCircuitBreaker(testConfig()).Call(errFunc)).To(Equal(errTest))
+	Expect(NewCircuitBreaker(testConfig()).Call(errFunc)).To(Equal(testErr))
 }
 
 func (s *BreakerSuite) TestNaturalErrorTrip(t sweet.T) {
 	breaker := NewCircuitBreaker(testConfig())
 
 	for i := 0; i < 5; i++ {
-		Expect(breaker.Call(errFunc)).To(Equal(errTest))
+		Expect(breaker.Call(errFunc)).To(Equal(testErr))
 	}
 
 	Expect(breaker.Call(errFunc)).To(Equal(ErrCircuitOpen))
@@ -95,14 +96,14 @@ func (s *BreakerSuite) TestHalfOpenFailure(t sweet.T) {
 	)
 
 	for i := 0; i < 5; i++ {
-		Expect(breaker.Call(errFunc)).To(Equal(errTest))
+		Expect(breaker.Call(errFunc)).To(Equal(testErr))
 	}
 
 	Expect(breaker.Call(errFunc)).To(Equal(ErrCircuitOpen))
 
 	// Wait for retry backoff
 	clock.Advance(15 * time.Second)
-	Expect(breaker.Call(errFunc)).To(Equal(errTest))
+	Expect(breaker.Call(errFunc)).To(Equal(testErr))
 	Expect(breaker.Call(nilFunc)).To(Equal(ErrCircuitOpen))
 }
 
@@ -117,7 +118,7 @@ func (s *BreakerSuite) TestHalfOpenReset(t sweet.T) {
 	)
 
 	for i := 0; i < 5; i++ {
-		Expect(breaker.Call(errFunc)).To(Equal(errTest))
+		Expect(breaker.Call(errFunc)).To(Equal(testErr))
 	}
 
 	Expect(breaker.Call(errFunc)).To(Equal(ErrCircuitOpen))
@@ -143,14 +144,14 @@ func (s *BreakerSuite) TestCallAsyncNaturalError(t sweet.T) {
 		errors  = breaker.CallAsync(errFunc)
 	)
 
-	Eventually(errors).Should(Receive(Equal(errTest)))
+	Eventually(errors).Should(Receive(Equal(testErr)))
 }
 
 func (s *BreakerSuite) TestCallAsyncNaturalErrorTrip(t sweet.T) {
 	breaker := NewCircuitBreaker(testConfig())
 
 	for i := 0; i < 5; i++ {
-		Expect(breaker.Call(errFunc)).To(Equal(errTest))
+		Expect(breaker.Call(errFunc)).To(Equal(testErr))
 	}
 
 	errors := breaker.CallAsync(errFunc)
@@ -225,20 +226,20 @@ func (s *BreakerSuite) TestResetBackoff(t sweet.T) {
 
 	for i := 0; i < 2; i++ {
 		for j := 0; j < 5; j++ {
-			Expect(breaker.Call(errFunc)).To(Equal(errTest))
+			Expect(breaker.Call(errFunc)).To(Equal(testErr))
 		}
 
 		Expect(breaker.Call(errFunc)).To(Equal(ErrCircuitOpen))
 		clock.Advance(100 * time.Millisecond)
-		Expect(breaker.Call(errFunc)).To(Equal(errTest))
+		Expect(breaker.Call(errFunc)).To(Equal(testErr))
 
 		Expect(breaker.Call(nilFunc)).To(Equal(ErrCircuitOpen))
 		clock.Advance(150 * time.Millisecond)
-		Expect(breaker.Call(errFunc)).To(Equal(errTest))
+		Expect(breaker.Call(errFunc)).To(Equal(testErr))
 
 		Expect(breaker.Call(nilFunc)).To(Equal(ErrCircuitOpen))
 		clock.Advance(200 * time.Millisecond)
-		Expect(breaker.Call(errFunc)).To(Equal(errTest))
+		Expect(breaker.Call(errFunc)).To(Equal(testErr))
 
 		Expect(breaker.Call(nilFunc)).To(Equal(ErrCircuitOpen))
 		clock.Advance(250 * time.Millisecond)
@@ -267,7 +268,7 @@ func (s *BreakerSuite) TestHardReset(t sweet.T) {
 	breaker := NewCircuitBreaker(testConfig())
 
 	for i := 0; i < 5; i++ {
-		Expect(breaker.Call(errFunc)).To(Equal(errTest))
+		Expect(breaker.Call(errFunc)).To(Equal(testErr))
 	}
 
 	Expect(breaker.Call(nilFunc)).To(Equal(ErrCircuitOpen))
@@ -322,18 +323,80 @@ func (s *BreakerSuite) TestTripAfterSuccess(t sweet.T) {
 	Expect(breaker.ShouldTry()).To(BeTrue())
 }
 
+func (s *BreakerSuite) TestTimeoutZeroTimeout(t sweet.T) {
+	fn := func(ctx context.Context) error {
+		return nil
+	}
+
+	Expect(callWithTimeout(fn, nil, 0)).To(BeNil())
+}
+
+func (s *BreakerSuite) TestTimeoutNoError(t sweet.T) {
+	var (
+		clock = glock.NewMockClock()
+		fn    = func(ctx context.Context) error {
+			return nil
+		}
+	)
+
+	Expect(callWithTimeout(fn, clock, time.Minute)).To(BeNil())
+
+	args := clock.GetAfterArgs()
+	Expect(args).To(HaveLen(1))
+	Expect(args[0]).To(Equal(time.Minute))
+}
+
+func (s *BreakerSuite) TestTimeoutError(t sweet.T) {
+	var (
+		clock = glock.NewMockClock()
+		fn    = func(ctx context.Context) error {
+			return errors.New("utoh")
+		}
+	)
+
+	Expect(callWithTimeout(fn, clock, time.Minute)).To(MatchError("utoh"))
+
+	args := clock.GetAfterArgs()
+	Expect(args).To(HaveLen(1))
+	Expect(args[0]).To(Equal(time.Minute))
+}
+
+func (s *BreakerSuite) TestTimeoutTimeout(t sweet.T) {
+	var (
+		clock  = glock.NewMockClock()
+		sync   = make(chan struct{})
+		errors = make(chan error)
+		fn     = func(ctx context.Context) error {
+			defer close(sync)
+			<-ctx.Done()
+			return nil
+		}
+	)
+
+	go func() {
+		defer close(errors)
+		errors <- callWithTimeout(fn, clock, time.Minute)
+	}()
+
+	Consistently(sync).ShouldNot(Receive())
+	Consistently(errors).ShouldNot(Receive())
+	clock.Advance(time.Minute * 2)
+	Eventually(errors).Should(Receive(Equal(ErrInvocationTimeout)))
+	Eventually(sync).Should(BeClosed())
+}
+
 //
 //
 //
 
-var errTest = fmt.Errorf("test error")
+var testErr = fmt.Errorf("test error")
 
 func nilFunc(ctx context.Context) error {
 	return nil
 }
 
 func errFunc(ctx context.Context) error {
-	return errTest
+	return testErr
 }
 
 func blockingFunc(ctx context.Context) error {
