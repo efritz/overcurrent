@@ -126,6 +126,51 @@ advised that several disparate functions are passed to the same breaker -
 failures from one function will influence the other in ways that are not
 intuitive.
 
+A breaker also has a `CallAsync` function that does the work of `Call` in a
+separate goroutine and returns a channnel that receives an error value then
+immediately closes.
+
+### Registry
+
+A *registry* is a collection of breakers which can be invoked by a unique name.
+In order to use a breaker in the registry, it must first be configured. Any of
+the options used to configure a breaker can be used along with two new options:
+
+- max concurrency: the maximum number of goroutines which may execute the
+breaker function concurrently
+- max concurrency timeout: how long you are willing to wait while the breaker
+function is at max concurrency
+
+```go
+registry := NewRegistry()
+
+registry.Configure(
+	"redis-cache",
+	WithFailureInterpreter(NewAnyErrorFailureInterpreter()),
+	WithTripCondition(NewConsecutiveFailureTripCondition(5)),
+	// ...
+	WithMaxConcurrency(50),
+	WithMaxConcurrencyTimeout(time.Second),
+)
+```
+
+To use a breaker, invoke the `Call` method of the registry with the name of
+the breaker to use. You can also pass a second nillable *fallback function*
+which is invoked when the breaker function fails (or fails to be called due
+to the circuit state or the concurrency state of the breaker).
+
+```go
+registry.Call("redis-cache", func(ctx context.Context) error {
+	// get value from redis
+}, func(err error) error {
+	// do some canned action
+	return nil
+})
+```
+
+Symmetrically to the breaker, a `CallAsync` method is also available with the
+same semantics as `Call`.
+
 ### Non-Function API
 
 Sometimes a chunk of code which should be protected by the circuit breaker is
