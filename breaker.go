@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/bradhe/stopwatch"
 	"github.com/efritz/backoff"
 	"github.com/efritz/glock"
 )
@@ -53,6 +54,7 @@ type (
 		resetBackoff               backoff.Backoff
 		failureInterpreter         FailureInterpreter
 		tripCondition              TripCondition
+		collector                  MetricCollector
 		clock                      glock.Clock
 		state                      circuitState
 		hardTrip                   bool
@@ -91,6 +93,7 @@ func newCircuitBreaker(configs ...BreakerConfig) *circuitBreaker {
 		resetBackoff:               backoff.NewConstantBackoff(1000 * time.Millisecond),
 		failureInterpreter:         NewAnyErrorFailureInterpreter(),
 		tripCondition:              NewConsecutiveFailureTripCondition(5),
+		collector:                  &NoopCollector{},
 		clock:                      glock.NewRealClock(),
 		state:                      closedState,
 		maxConcurrency:             100,
@@ -130,6 +133,10 @@ func WithMaxConcurrency(maxConcurrency int) BreakerConfig {
 
 func WithMaxConcurrencyTimeout(timeout time.Duration) BreakerConfig {
 	return func(cb *circuitBreaker) { cb.maxConcurrencyTimeout = timeout }
+}
+
+func WithCollector(collector MetricCollector) BreakerConfig {
+	return func(cb *circuitBreaker) { cb.collector = collector }
 }
 
 func withClock(clock glock.Clock) BreakerConfig {
@@ -192,7 +199,8 @@ func (cb *circuitBreaker) resetTimeoutElapsed() bool {
 }
 
 func (cb *circuitBreaker) MarkResult(err error) bool {
-	if err != nil && cb.failureInterpreter.ShouldTrip(err) {
+	// TODO - test that this doesn't go to failure interpreter
+	if err != nil && (err == ErrInvocationTimeout || cb.failureInterpreter.ShouldTrip(err)) {
 		now := cb.clock.Now()
 		cb.lastFailureTime = &now
 		cb.tripCondition.Failure()
@@ -204,11 +212,26 @@ func (cb *circuitBreaker) MarkResult(err error) bool {
 }
 
 func (cb *circuitBreaker) Call(f BreakerFunc) error {
+	cb.collector.Report(EventTypeAttempt)
+
 	if !cb.ShouldTry() {
+		cb.collector.Report(EventTypeShortCircuit)
 		return ErrCircuitOpen
 	}
 
-	if err := callWithTimeout(f, cb.clock, cb.invocationTimeout); !cb.MarkResult(err) {
+	start := stopwatch.Start()
+	err := callWithTimeout(f, cb.clock, cb.invocationTimeout)
+	elapsed := stopwatch.Stop(start).Milliseconds()
+
+	cb.collector.ReportDuration(EventTypeRunDuration, elapsed)
+
+	if !cb.MarkResult(err) {
+		if err == ErrInvocationTimeout {
+			cb.collector.Report(EventTypeTimeout)
+			return err
+		}
+
+		cb.collector.Report(EventTypeError)
 		return err
 	}
 

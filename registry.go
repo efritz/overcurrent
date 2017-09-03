@@ -4,6 +4,7 @@ import (
 	"errors"
 	"sync"
 
+	"github.com/bradhe/stopwatch"
 	"github.com/efritz/glock"
 )
 
@@ -77,47 +78,66 @@ func (r *registry) Configure(name string, configs ...BreakerConfig) error {
 }
 
 func (r *registry) Call(name string, f BreakerFunc, fallback FallbackFunc) error {
-	wrapped, err := r.getWrappedBreaker(name)
+	wrapped, collector, err := r.getWrappedBreaker(name)
 	if err != nil {
 		return err
 	}
 
-	if wrapped.semaphore.wait(wrapped.breaker.maxConcurrencyTimeout) {
-		err = func() error {
-			// Ensure we don't eat capacity from the semaphore
-			// if f panics (but we also don't want to hold the
-			// semaphore while we execute the fallback func).
-			defer wrapped.semaphore.signal()
+	start := stopwatch.Start()
+	err = r.call(wrapped, collector, f, fallback)
+	elapsed := stopwatch.Stop(start).Milliseconds()
 
-			return wrapped.breaker.Call(f)
-		}()
-	} else {
-		err = ErrMaxConcurrency
-	}
-
-	return tryFallback(err, fallback)
+	collector.ReportDuration(EventTypeTotalDuration, elapsed)
+	return err
 }
 
 func (r *registry) CallAsync(name string, f BreakerFunc, fallback FallbackFunc) <-chan error {
 	return toErrChan(func() error { return r.Call(name, f, fallback) })
 }
 
-func (r *registry) getWrappedBreaker(name string) (*wrappedBreaker, error) {
+func (r *registry) getWrappedBreaker(name string) (*wrappedBreaker, MetricCollector, error) {
 	r.mutex.RLock()
 	defer r.mutex.RUnlock()
 
-	breaker, ok := r.breakers[name]
+	wrapped, ok := r.breakers[name]
 	if !ok {
-		return nil, ErrBreakerUnconfigured
+		return nil, nil, ErrBreakerUnconfigured
 	}
 
-	return breaker, nil
+	return wrapped, wrapped.breaker.collector, nil
 }
 
-func tryFallback(err error, fallback FallbackFunc) error {
-	if err != nil && fallback != nil {
-		return fallback(err)
+func (r *registry) call(wrapped *wrappedBreaker, collector MetricCollector, f BreakerFunc, fallback FallbackFunc) error {
+	err := r.callWithSemaphore(wrapped.breaker, wrapped.semaphore, f)
+	if err == nil {
+		collector.Report(EventTypeSuccess)
+		return nil
 	}
 
-	return err
+	collector.Report(EventTypeFailure)
+
+	if err == ErrMaxConcurrency {
+		collector.Report(EventTypeRejection)
+	}
+
+	if fallback == nil {
+		return err
+	}
+
+	if err := fallback(err); err != nil {
+		collector.Report(EventTypeFallbackFailure)
+		return err
+	}
+
+	collector.Report(EventTypeFallbackSuccess)
+	return nil
+}
+
+func (r *registry) callWithSemaphore(breaker *circuitBreaker, semaphore *semaphore, f BreakerFunc) error {
+	if !semaphore.wait(breaker.maxConcurrencyTimeout) {
+		return ErrMaxConcurrency
+	}
+
+	defer semaphore.signal()
+	return breaker.Call(f)
 }
