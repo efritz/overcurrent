@@ -83,8 +83,14 @@ func (r *registry) Call(name string, f BreakerFunc, fallback FallbackFunc) error
 	}
 
 	if wrapped.semaphore.wait(wrapped.breaker.maxConcurrencyTimeout) {
-		defer wrapped.semaphore.signal()
-		err = wrapped.breaker.Call(f)
+		err = func() error {
+			// Ensure we don't eat capacity from the semaphore
+			// if f panics (but we also don't want to hold the
+			// semaphore while we execute the fallback func).
+			defer wrapped.semaphore.signal()
+
+			return wrapped.breaker.Call(f)
+		}()
 	} else {
 		err = ErrMaxConcurrency
 	}
