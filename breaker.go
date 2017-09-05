@@ -92,7 +92,7 @@ func newCircuitBreaker(configs ...BreakerConfig) *circuitBreaker {
 		resetBackoff:               backoff.NewConstantBackoff(1000 * time.Millisecond),
 		failureInterpreter:         NewAnyErrorFailureInterpreter(),
 		tripCondition:              NewConsecutiveFailureTripCondition(5),
-		collector:                  &NoopCollector{},
+		collector:                  defaultCollector,
 		clock:                      glock.NewRealClock(),
 		state:                      closedState,
 		maxConcurrency:             100,
