@@ -55,7 +55,7 @@ type (
 		tripCondition              TripCondition
 		collector                  MetricCollector
 		clock                      glock.Clock
-		state                      circuitState
+		state                      CircuitState
 		hardTrip                   bool
 		lastFailureTime            *time.Time
 		resetTimeout               *time.Duration
@@ -63,13 +63,13 @@ type (
 		maxConcurrencyTimeout      time.Duration
 	}
 
-	circuitState int
+	CircuitState int
 )
 
 const (
-	openState       circuitState = iota // Failure state
-	closedState                         // Success state
-	halfClosedState                     // Cautious, probabilistic retry state
+	StateOpen       CircuitState = iota // Failure state
+	StateClosed                         // Success state
+	StateHalfClosed                     // Cautious, probabilistic retry state
 )
 
 var (
@@ -94,7 +94,7 @@ func newCircuitBreaker(configs ...BreakerConfig) *circuitBreaker {
 		tripCondition:              NewConsecutiveFailureTripCondition(5),
 		collector:                  defaultCollector,
 		clock:                      glock.NewRealClock(),
-		state:                      closedState,
+		state:                      StateClosed,
 		maxConcurrency:             100,
 		maxConcurrencyTimeout:      time.Millisecond * 100,
 	}
@@ -163,30 +163,30 @@ func (cb *circuitBreaker) ShouldTry() bool {
 	}
 
 	if !cb.tripCondition.ShouldTrip() {
-		cb.state = closedState
+		cb.state = StateClosed
 		return true
 	}
 
-	if cb.state == closedState {
+	if cb.state == StateClosed {
 		cb.resetBackoff.Reset()
 	}
 
-	if cb.state != openState {
+	if cb.state != StateOpen {
 		reset := cb.resetBackoff.NextInterval()
 		cb.resetTimeout = &reset
 	}
 
 	if cb.resetTimeoutElapsed() {
-		cb.state = halfClosedState
+		cb.state = StateHalfClosed
 		return rand.Float64() < cb.halfClosedRetryProbability
 	}
 
-	cb.state = openState
+	cb.state = StateOpen
 	return false
 }
 
 func (cb *circuitBreaker) resetTimeoutElapsed() bool {
-	if cb.state != openState {
+	if cb.state != StateOpen {
 		return false
 	}
 
