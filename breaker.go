@@ -6,7 +6,6 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/bradhe/stopwatch"
 	"github.com/efritz/backoff"
 	"github.com/efritz/glock"
 )
@@ -219,9 +218,9 @@ func (cb *circuitBreaker) Call(f BreakerFunc) error {
 		return ErrCircuitOpen
 	}
 
-	start := stopwatch.Start()
+	start := time.Now()
 	err := callWithTimeout(f, cb.clock, cb.invocationTimeout)
-	elapsed := stopwatch.Stop(start).Milliseconds()
+	elapsed := time.Now().Sub(start)
 
 	cb.collector.ReportDuration(EventTypeRunDuration, elapsed)
 

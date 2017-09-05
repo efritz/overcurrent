@@ -3,8 +3,8 @@ package overcurrent
 import (
 	"errors"
 	"sync"
+	"time"
 
-	"github.com/bradhe/stopwatch"
 	"github.com/efritz/glock"
 )
 
@@ -83,9 +83,9 @@ func (r *registry) Call(name string, f BreakerFunc, fallback FallbackFunc) error
 		return err
 	}
 
-	start := stopwatch.Start()
+	start := time.Now()
 	err = r.call(wrapped, collector, f, fallback)
-	elapsed := stopwatch.Stop(start).Milliseconds()
+	elapsed := time.Now().Sub(start)
 
 	collector.ReportDuration(EventTypeTotalDuration, elapsed)
 	return err
