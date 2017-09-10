@@ -404,7 +404,7 @@ func blockingFunc(ctx context.Context) error {
 	return nil
 }
 
-func testConfig() BreakerConfig {
+func testConfig() BreakerConfigFunc {
 	return func(cb *circuitBreaker) {
 		cb.invocationTimeout = time.Minute
 		cb.halfClosedRetryProbability = 0.75

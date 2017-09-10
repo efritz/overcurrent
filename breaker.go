@@ -45,8 +45,8 @@ type (
 		CallAsync(f BreakerFunc) <-chan error
 	}
 
-	BreakerConfig func(*circuitBreaker)
-	BreakerFunc   func(ctx context.Context) error
+	BreakerConfigFunc func(*circuitBreaker)
+	BreakerFunc       func(ctx context.Context) error
 
 	circuitBreaker struct {
 		invocationTimeout          time.Duration
@@ -84,11 +84,11 @@ var (
 )
 
 // NewCircuitBreaker creates a new CircuitBreaker.
-func NewCircuitBreaker(configs ...BreakerConfig) CircuitBreaker {
+func NewCircuitBreaker(configs ...BreakerConfigFunc) CircuitBreaker {
 	return newCircuitBreaker(configs...)
 }
 
-func newCircuitBreaker(configs ...BreakerConfig) *circuitBreaker {
+func newCircuitBreaker(configs ...BreakerConfigFunc) *circuitBreaker {
 	breaker := &circuitBreaker{
 		invocationTimeout:          100 * time.Millisecond,
 		halfClosedRetryProbability: 0.5,
@@ -106,43 +106,47 @@ func newCircuitBreaker(configs ...BreakerConfig) *circuitBreaker {
 		config(breaker)
 	}
 
+	breaker.collector.ReportNew(BreakerConfig{
+		MaxConcurrency: breaker.maxConcurrency,
+	})
+
 	breaker.setState(StateClosed)
 	return breaker
 }
 
-func WithInvocationTimeout(timeout time.Duration) BreakerConfig {
+func WithInvocationTimeout(timeout time.Duration) BreakerConfigFunc {
 	return func(cb *circuitBreaker) { cb.invocationTimeout = timeout }
 }
 
-func WithHalfClosedRetryProbability(probability float64) BreakerConfig {
+func WithHalfClosedRetryProbability(probability float64) BreakerConfigFunc {
 	return func(cb *circuitBreaker) { cb.halfClosedRetryProbability = probability }
 }
 
-func WithResetBackoff(resetBackoff backoff.Backoff) BreakerConfig {
+func WithResetBackoff(resetBackoff backoff.Backoff) BreakerConfigFunc {
 	return func(cb *circuitBreaker) { cb.resetBackoff = resetBackoff }
 }
 
-func WithFailureInterpreter(failureInterpreter FailureInterpreter) BreakerConfig {
+func WithFailureInterpreter(failureInterpreter FailureInterpreter) BreakerConfigFunc {
 	return func(cb *circuitBreaker) { cb.failureInterpreter = failureInterpreter }
 }
 
-func WithTripCondition(tripCondition TripCondition) BreakerConfig {
+func WithTripCondition(tripCondition TripCondition) BreakerConfigFunc {
 	return func(cb *circuitBreaker) { cb.tripCondition = tripCondition }
 }
 
-func WithMaxConcurrency(maxConcurrency int) BreakerConfig {
+func WithMaxConcurrency(maxConcurrency int) BreakerConfigFunc {
 	return func(cb *circuitBreaker) { cb.maxConcurrency = maxConcurrency }
 }
 
-func WithMaxConcurrencyTimeout(timeout time.Duration) BreakerConfig {
+func WithMaxConcurrencyTimeout(timeout time.Duration) BreakerConfigFunc {
 	return func(cb *circuitBreaker) { cb.maxConcurrencyTimeout = timeout }
 }
 
-func WithCollector(collector MetricCollector) BreakerConfig {
+func WithCollector(collector MetricCollector) BreakerConfigFunc {
 	return func(cb *circuitBreaker) { cb.collector = collector }
 }
 
-func withClock(clock glock.Clock) BreakerConfig {
+func withClock(clock glock.Clock) BreakerConfigFunc {
 	return func(cb *circuitBreaker) { cb.clock = clock }
 }
 
@@ -215,7 +219,7 @@ func (cb *circuitBreaker) MarkResult(err error) bool {
 
 func (cb *circuitBreaker) Call(f BreakerFunc) error {
 	if !cb.ShouldTry() {
-		cb.collector.Report(EventTypeShortCircuit)
+		cb.collector.ReportCount(EventTypeShortCircuit)
 		return ErrCircuitOpen
 	}
 
@@ -227,12 +231,12 @@ func (cb *circuitBreaker) Call(f BreakerFunc) error {
 
 	if !cb.MarkResult(err) {
 		if err == ErrInvocationTimeout {
-			cb.collector.Report(EventTypeTimeout)
+			cb.collector.ReportCount(EventTypeTimeout)
 		} else {
-			cb.collector.Report(EventTypeError)
+			cb.collector.ReportCount(EventTypeError)
 		}
 	} else if err != nil {
-		cb.collector.Report(EventTypeBadRequest)
+		cb.collector.ReportCount(EventTypeBadRequest)
 	}
 
 	return err

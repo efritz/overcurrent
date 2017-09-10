@@ -4,13 +4,15 @@ import "time"
 
 type (
 	MetricCollector interface {
-		Report(EventType)
+		ReportNew(BreakerConfig)
+		ReportCount(EventType)
 		ReportDuration(EventType, time.Duration)
 		ReportState(CircuitState)
 	}
 
 	NamedMetricCollector interface {
-		Report(string, EventType)
+		ReportNew(string, BreakerConfig)
+		ReportCount(string, EventType)
 		ReportDuration(string, EventType, time.Duration)
 		ReportState(string, CircuitState)
 	}
@@ -18,6 +20,10 @@ type (
 	namedCollector struct {
 		name      string
 		collector NamedMetricCollector
+	}
+
+	BreakerConfig struct {
+		MaxConcurrency int
 	}
 
 	EventType     int
@@ -45,9 +51,10 @@ const (
 
 var defaultCollector = &noopCollector{}
 
-func (c *noopCollector) Report(eventType EventType)                                 {}
-func (c *noopCollector) ReportDuration(eventType EventType, duration time.Duration) {}
-func (c *noopCollector) ReportState(state CircuitState)                             {}
+func (c *noopCollector) ReportNew(BreakerConfig)                 {}
+func (c *noopCollector) ReportCount(EventType)                   {}
+func (c *noopCollector) ReportDuration(EventType, time.Duration) {}
+func (c *noopCollector) ReportState(CircuitState)                {}
 
 func NamedCollector(name string, collector NamedMetricCollector) MetricCollector {
 	return &namedCollector{
@@ -56,8 +63,12 @@ func NamedCollector(name string, collector NamedMetricCollector) MetricCollector
 	}
 }
 
-func (c *namedCollector) Report(eventType EventType) {
-	c.collector.Report(c.name, eventType)
+func (c *namedCollector) ReportNew(config BreakerConfig) {
+	c.collector.ReportNew(c.name, config)
+}
+
+func (c *namedCollector) ReportCount(eventType EventType) {
+	c.collector.ReportCount(c.name, eventType)
 }
 
 func (c *namedCollector) ReportDuration(eventType EventType, duration time.Duration) {

@@ -11,10 +11,10 @@ import (
 type (
 	Registry interface {
 		// Configure will register a new breaker instance under the given name using
-		// the given configuration. A breaker config may not be changed after being
-		// initialized. It is an error to register the same breaker twice, or try to
-		// invoke Call or CallAsync with an unregistered breaker.
-		Configure(name string, configs ...BreakerConfig) error
+		// the given configuration. A breaker's configuration may not be changed after
+		// being initialized. It is an error to register the same breaker twice, or try
+		// to invoke Call or CallAsync with an unregistered breaker.
+		Configure(name string, configs ...BreakerConfigFunc) error
 
 		// Call will invoke `Call` on the breaker configured with the given name. If
 		// the breaker returns a non-nil error, the fallback function is invoked with
@@ -59,7 +59,7 @@ func newRegistryWithClock(clock glock.Clock) Registry {
 	}
 }
 
-func (r *registry) Configure(name string, configs ...BreakerConfig) error {
+func (r *registry) Configure(name string, configs ...BreakerConfigFunc) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -110,18 +110,18 @@ func (r *registry) getWrappedBreaker(name string) (*wrappedBreaker, MetricCollec
 }
 
 func (r *registry) call(wrapped *wrappedBreaker, collector MetricCollector, f BreakerFunc, fallback FallbackFunc) error {
-	collector.Report(EventTypeAttempt)
+	collector.ReportCount(EventTypeAttempt)
 
 	err := r.callWithSemaphore(wrapped.breaker, wrapped.semaphore, f)
 	if err == nil {
-		collector.Report(EventTypeSuccess)
+		collector.ReportCount(EventTypeSuccess)
 		return nil
 	}
 
-	collector.Report(EventTypeFailure)
+	collector.ReportCount(EventTypeFailure)
 
 	if err == ErrMaxConcurrency {
-		collector.Report(EventTypeRejection)
+		collector.ReportCount(EventTypeRejection)
 	}
 
 	if fallback == nil {
@@ -129,28 +129,28 @@ func (r *registry) call(wrapped *wrappedBreaker, collector MetricCollector, f Br
 	}
 
 	if err := fallback(err); err != nil {
-		collector.Report(EventTypeFallbackFailure)
+		collector.ReportCount(EventTypeFallbackFailure)
 		return err
 	}
 
-	collector.Report(EventTypeFallbackSuccess)
+	collector.ReportCount(EventTypeFallbackSuccess)
 	return nil
 }
 
 func (r *registry) callWithSemaphore(breaker *circuitBreaker, semaphore *semaphore, f BreakerFunc) error {
-	breaker.collector.Report(EventTypeSemaphoreQueued)
+	breaker.collector.ReportCount(EventTypeSemaphoreQueued)
 	val := semaphore.wait(breaker.maxConcurrencyTimeout)
-	breaker.collector.Report(EventTypeSemaphoreDequeued)
+	breaker.collector.ReportCount(EventTypeSemaphoreDequeued)
 
 	if !val {
 		return ErrMaxConcurrency
 	}
 
 	defer func() {
-		breaker.collector.Report(EventTypeSemaphoreReleased)
+		breaker.collector.ReportCount(EventTypeSemaphoreReleased)
 		semaphore.signal()
 	}()
 
-	breaker.collector.Report(EventTypeSemaphoreAcquired)
+	breaker.collector.ReportCount(EventTypeSemaphoreAcquired)
 	return breaker.Call(f)
 }
