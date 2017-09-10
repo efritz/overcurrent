@@ -126,6 +126,7 @@ func (tc *PercentageFailureTripCondition) ShouldTrip() bool {
 	if len(tc.log) < tc.window {
 		return false
 	}
+
 	return float64(tc.failures)/float64(len(tc.log)) >= tc.threshold
 }
 
