@@ -25,13 +25,14 @@ func newSemaphore(clock glock.Clock, capacity int) *semaphore {
 }
 
 func (s *semaphore) wait(timeout time.Duration) bool {
+	select {
+	case <-s.ch:
+		return true
+	default:
+	}
+
 	if timeout == 0 {
-		select {
-		case <-s.ch:
-			return true
-		default:
-			return false
-		}
+		return false
 	}
 
 	select {
