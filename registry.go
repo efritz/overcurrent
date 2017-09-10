@@ -92,7 +92,9 @@ func (r *registry) Call(name string, f BreakerFunc, fallback FallbackFunc) error
 }
 
 func (r *registry) CallAsync(name string, f BreakerFunc, fallback FallbackFunc) <-chan error {
-	return toErrChan(func() error { return r.Call(name, f, fallback) })
+	return toErrChan(func() error {
+		return r.Call(name, f, fallback)
+	})
 }
 
 func (r *registry) getWrappedBreaker(name string) (*wrappedBreaker, MetricCollector, error) {
@@ -108,6 +110,8 @@ func (r *registry) getWrappedBreaker(name string) (*wrappedBreaker, MetricCollec
 }
 
 func (r *registry) call(wrapped *wrappedBreaker, collector MetricCollector, f BreakerFunc, fallback FallbackFunc) error {
+	collector.Report(EventTypeAttempt)
+
 	err := r.callWithSemaphore(wrapped.breaker, wrapped.semaphore, f)
 	if err == nil {
 		collector.Report(EventTypeSuccess)
@@ -134,10 +138,19 @@ func (r *registry) call(wrapped *wrappedBreaker, collector MetricCollector, f Br
 }
 
 func (r *registry) callWithSemaphore(breaker *circuitBreaker, semaphore *semaphore, f BreakerFunc) error {
-	if !semaphore.wait(breaker.maxConcurrencyTimeout) {
+	breaker.collector.Report(EventTypeSemaphoreQueued)
+	val := semaphore.wait(breaker.maxConcurrencyTimeout)
+	breaker.collector.Report(EventTypeSemaphoreDequeued)
+
+	if !val {
 		return ErrMaxConcurrency
 	}
 
-	defer semaphore.signal()
+	defer func() {
+		breaker.collector.Report(EventTypeSemaphoreReleased)
+		semaphore.signal()
+	}()
+
+	breaker.collector.Report(EventTypeSemaphoreAcquired)
 	return breaker.Call(f)
 }
