@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"sync"
 	"time"
 
 	"github.com/efritz/backoff"
@@ -50,26 +51,28 @@ type (
 	circuitBreaker struct {
 		invocationTimeout          time.Duration
 		halfClosedRetryProbability float64
+		maxConcurrency             int
+		maxConcurrencyTimeout      time.Duration
 		resetBackoff               backoff.Backoff
 		failureInterpreter         FailureInterpreter
 		tripCondition              TripCondition
 		collector                  MetricCollector
 		clock                      glock.Clock
+		mutex                      *sync.RWMutex
 		state                      CircuitState
-		hardTrip                   bool
 		lastFailureTime            *time.Time
 		resetTimeout               *time.Duration
-		maxConcurrency             int
-		maxConcurrencyTimeout      time.Duration
 	}
 
 	CircuitState int
 )
 
 const (
-	StateOpen       CircuitState = iota // Failure state
-	StateClosed                         // Success state
-	StateHalfClosed                     // Cautious, probabilistic retry state
+	_               CircuitState = iota
+	StateOpen                    // Failure state
+	StateClosed                  // Success state
+	StateHalfClosed              // Cautious, probabilistic retry state
+	StateHardOpen                // Forced failure state
 )
 
 var (
@@ -89,20 +92,21 @@ func newCircuitBreaker(configs ...BreakerConfig) *circuitBreaker {
 	breaker := &circuitBreaker{
 		invocationTimeout:          100 * time.Millisecond,
 		halfClosedRetryProbability: 0.5,
+		maxConcurrency:             100,
+		maxConcurrencyTimeout:      time.Millisecond * 100,
 		resetBackoff:               backoff.NewConstantBackoff(1000 * time.Millisecond),
 		failureInterpreter:         NewAnyErrorFailureInterpreter(),
 		tripCondition:              NewConsecutiveFailureTripCondition(5),
 		collector:                  defaultCollector,
 		clock:                      glock.NewRealClock(),
-		state:                      StateClosed,
-		maxConcurrency:             100,
-		maxConcurrencyTimeout:      time.Millisecond * 100,
+		mutex:                      &sync.RWMutex{},
 	}
 
 	for _, config := range configs {
 		config(breaker)
 	}
 
+	breaker.setState(StateClosed)
 	return breaker
 }
 
@@ -146,24 +150,32 @@ func withClock(clock glock.Clock) BreakerConfig {
 // Breaker Implementation
 
 func (cb *circuitBreaker) Trip() {
-	cb.hardTrip = true
+	cb.mutex.Lock()
+	defer cb.mutex.Unlock()
+
+	cb.setState(StateHardOpen)
 }
 
 func (cb *circuitBreaker) Reset() {
-	cb.hardTrip = false
-	cb.resetTimeout = nil
+	cb.mutex.Lock()
+	defer cb.mutex.Unlock()
 
+	cb.setState(StateClosed)
+	cb.resetTimeout = nil
 	cb.resetBackoff.Reset()
 	cb.tripCondition.Success()
 }
 
 func (cb *circuitBreaker) ShouldTry() bool {
-	if cb.hardTrip {
+	cb.mutex.Lock()
+	defer cb.mutex.Unlock()
+
+	if cb.state == StateHardOpen {
 		return false
 	}
 
 	if !cb.tripCondition.ShouldTrip() {
-		cb.state = StateClosed
+		cb.setState(StateClosed)
 		return true
 	}
 
@@ -177,29 +189,20 @@ func (cb *circuitBreaker) ShouldTry() bool {
 	}
 
 	if cb.resetTimeoutElapsed() {
-		cb.state = StateHalfClosed
+		cb.setState(StateHalfClosed)
 		return rand.Float64() < cb.halfClosedRetryProbability
 	}
 
-	cb.state = StateOpen
+	cb.setState(StateOpen)
 	return false
-}
-
-func (cb *circuitBreaker) resetTimeoutElapsed() bool {
-	if cb.state != StateOpen {
-		return false
-	}
-
-	if cb.lastFailureTime == nil || cb.resetTimeout == nil {
-		return false
-	}
-
-	return cb.clock.Now().Sub(*cb.lastFailureTime) >= *cb.resetTimeout
 }
 
 func (cb *circuitBreaker) MarkResult(err error) bool {
 	// TODO - test that this doesn't go to failure interpreter
 	if err != nil && (err == ErrInvocationTimeout || cb.failureInterpreter.ShouldTrip(err)) {
+		cb.mutex.Lock()
+		defer cb.mutex.Unlock()
+
 		now := cb.clock.Now()
 		cb.lastFailureTime = &now
 		cb.tripCondition.Failure()
@@ -211,8 +214,6 @@ func (cb *circuitBreaker) MarkResult(err error) bool {
 }
 
 func (cb *circuitBreaker) Call(f BreakerFunc) error {
-	cb.collector.Report(EventTypeAttempt)
-
 	if !cb.ShouldTry() {
 		cb.collector.Report(EventTypeShortCircuit)
 		return ErrCircuitOpen
@@ -227,18 +228,42 @@ func (cb *circuitBreaker) Call(f BreakerFunc) error {
 	if !cb.MarkResult(err) {
 		if err == ErrInvocationTimeout {
 			cb.collector.Report(EventTypeTimeout)
-			return err
+		} else {
+			cb.collector.Report(EventTypeError)
 		}
-
-		cb.collector.Report(EventTypeError)
-		return err
+	} else if err != nil {
+		cb.collector.Report(EventTypeBadRequest)
 	}
 
-	return nil
+	return err
 }
 
 func (cb *circuitBreaker) CallAsync(f BreakerFunc) <-chan error {
-	return toErrChan(func() error { return cb.Call(f) })
+	return toErrChan(func() error {
+		return cb.Call(f)
+	})
+}
+
+//
+// Internal Methods
+
+func (cb *circuitBreaker) setState(state CircuitState) {
+	if cb.state != state {
+		cb.state = state
+		cb.collector.ReportState(state)
+	}
+}
+
+func (cb *circuitBreaker) resetTimeoutElapsed() bool {
+	if cb.state != StateOpen {
+		return false
+	}
+
+	if cb.lastFailureTime == nil || cb.resetTimeout == nil {
+		return false
+	}
+
+	return cb.clock.Now().Sub(*cb.lastFailureTime) >= *cb.resetTimeout
 }
 
 func callWithTimeout(f BreakerFunc, clock glock.Clock, timeout time.Duration) error {
