@@ -48,7 +48,7 @@ var (
 )
 
 func NewRegistry() Registry {
-	return newRegistryWithClock(glock.NewMockClock())
+	return newRegistryWithClock(glock.NewRealClock())
 }
 
 func newRegistryWithClock(clock glock.Clock) Registry {
