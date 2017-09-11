@@ -138,11 +138,7 @@ func (r *registry) call(wrapped *wrappedBreaker, collector MetricCollector, f Br
 }
 
 func (r *registry) callWithSemaphore(breaker *circuitBreaker, semaphore *semaphore, f BreakerFunc) error {
-	breaker.collector.ReportCount(EventTypeSemaphoreQueued)
-	val := semaphore.wait(breaker.maxConcurrencyTimeout)
-	breaker.collector.ReportCount(EventTypeSemaphoreDequeued)
-
-	if !val {
+	if !semaphore.wait(breaker.maxConcurrencyTimeout, breaker.collector) {
 		return ErrMaxConcurrency
 	}
 

@@ -24,7 +24,7 @@ func newSemaphore(clock glock.Clock, capacity int) *semaphore {
 	return s
 }
 
-func (s *semaphore) wait(timeout time.Duration) bool {
+func (s *semaphore) wait(timeout time.Duration, collector MetricCollector) bool {
 	select {
 	case <-s.ch:
 		return true
@@ -34,6 +34,9 @@ func (s *semaphore) wait(timeout time.Duration) bool {
 	if timeout == 0 {
 		return false
 	}
+
+	collector.ReportCount(EventTypeSemaphoreQueued)
+	defer collector.ReportCount(EventTypeSemaphoreDequeued)
 
 	select {
 	case <-s.ch:

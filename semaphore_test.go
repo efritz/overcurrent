@@ -18,12 +18,12 @@ func (s *SemaphoreSuite) TestWaitSignal(t sweet.T) {
 	)
 
 	for i := 0; i < 10; i++ {
-		Expect(semaphore.wait(time.Second)).To(BeTrue())
+		Expect(semaphore.wait(time.Second, defaultCollector)).To(BeTrue())
 	}
 
 	go func() {
 		defer close(sync)
-		semaphore.wait(time.Second)
+		semaphore.wait(time.Second, defaultCollector)
 	}()
 
 	Consistently(sync).ShouldNot(Receive())
@@ -35,7 +35,7 @@ func (s *SemaphoreSuite) TestWaitSignal(t sweet.T) {
 	}
 
 	for i := 0; i < 10; i++ {
-		Expect(semaphore.wait(time.Second)).To(BeTrue())
+		Expect(semaphore.wait(time.Second, defaultCollector)).To(BeTrue())
 	}
 }
 
@@ -47,12 +47,12 @@ func (s *SemaphoreSuite) TestWaitTimeout(t sweet.T) {
 	)
 
 	for i := 0; i < 10; i++ {
-		Expect(semaphore.wait(time.Second)).To(BeTrue())
+		Expect(semaphore.wait(time.Second, defaultCollector)).To(BeTrue())
 	}
 
 	go func() {
 		defer close(value)
-		value <- semaphore.wait(time.Minute)
+		value <- semaphore.wait(time.Minute, defaultCollector)
 	}()
 
 	Consistently(value).ShouldNot(Receive())
@@ -66,12 +66,12 @@ func (s *SemaphoreSuite) TestNoWait(t sweet.T) {
 		semaphore = newSemaphore(clock, 3)
 	)
 
-	Expect(semaphore.wait(0)).To(BeTrue())
-	Expect(semaphore.wait(0)).To(BeTrue())
-	Expect(semaphore.wait(0)).To(BeTrue())
-	Expect(semaphore.wait(0)).To(BeFalse())
+	Expect(semaphore.wait(0, defaultCollector)).To(BeTrue())
+	Expect(semaphore.wait(0, defaultCollector)).To(BeTrue())
+	Expect(semaphore.wait(0, defaultCollector)).To(BeTrue())
+	Expect(semaphore.wait(0, defaultCollector)).To(BeFalse())
 
 	semaphore.signal()
-	Expect(semaphore.wait(0)).To(BeTrue())
-	Expect(semaphore.wait(0)).To(BeFalse())
+	Expect(semaphore.wait(0, defaultCollector)).To(BeTrue())
+	Expect(semaphore.wait(0, defaultCollector)).To(BeFalse())
 }
