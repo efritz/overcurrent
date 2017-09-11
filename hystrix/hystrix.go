@@ -11,16 +11,14 @@ import (
 )
 
 type Collector struct {
-	registry overcurrent.Registry
 	breakers map[string]*BreakerStats
 	events   chan interface{}
 	halt     chan struct{}
 	mutex    *sync.RWMutex
 }
 
-func NewCollector(registry overcurrent.Registry) *Collector {
+func NewCollector() *Collector {
 	return &Collector{
-		registry: registry,
 		breakers: map[string]*BreakerStats{},
 		events:   make(chan interface{}),
 		halt:     make(chan struct{}),

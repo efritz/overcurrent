@@ -199,6 +199,38 @@ if success {
 }
 ```
 
+## Metric Collectors
+
+### Hystrix
+
+Overcurrent comes with a metric collector compatible with the Netflix Hystrix
+[Dashboard](https://github.com/Netflix/Hystrix/wiki/Dashboard). For testing purposes,
+a stand-alone dashboard can be used via Docker (see `docker-compose.yml` for details).
+Below is a minimal example setting up the Hystrix collector.
+
+```go
+import (
+	"github.com/efritz/overcurrent"
+	"github.com/efritz/overcurrent/hystrix"
+)
+
+func main() {
+	hystrixCollector := hystrix.NewCollector()
+	hystrixCollector.Start()
+	defer hystrixCollector.Stop()
+
+	registry := overcurrent.NewRegistry()
+	registry.Configure(
+		"name",
+		overcurrent.WithCollector(overcurrent.NamedCollector("name", hystrixCollector)),
+	)
+
+	// ...
+
+	http.ListenAndServe("0.0.0.0:8080", hystrixCollector.Handler())
+}
+```
+
 ## License
 
 Copyright (c) 2016 Eric Fritz
