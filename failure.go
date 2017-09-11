@@ -11,15 +11,17 @@ type (
 		ShouldTrip(error) bool
 	}
 
-	// AnyErrorFailureInterpreter trips on every error.
-	AnyErrorFailureInterpreter struct{}
+	FailureInterpreterFunc func(error) bool
 )
 
-// NewAnyErrorFailureInterpreter creates an AnyErrorFailureInterpreter.
-func NewAnyErrorFailureInterpreter() FailureInterpreter {
-	return &AnyErrorFailureInterpreter{}
+func (f FailureInterpreterFunc) ShouldTrip(err error) bool {
+	return f(err)
 }
 
-func (fi *AnyErrorFailureInterpreter) ShouldTrip(err error) bool {
-	return true
+// NewAnyErrorFailureInterpreter creates a failure interpreter that trips
+// on every error.
+func NewAnyErrorFailureInterpreter() FailureInterpreter {
+	return FailureInterpreterFunc(func(error) bool {
+		return true
+	})
 }
