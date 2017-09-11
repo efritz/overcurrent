@@ -1,4 +1,4 @@
-package plugins
+package hystrix
 
 import (
 	"testing"
@@ -14,7 +14,7 @@ func TestMain(m *testing.M) {
 	sweet.Run(m, func(s *sweet.S) {
 		s.RegisterPlugin(junit.NewPlugin())
 
-		s.AddSuite(&HystrixSuite{})
+		s.AddSuite(&CollectorSuite{})
 		s.AddSuite(&StatsSuite{})
 		s.AddSuite(&UtilSuite{})
 	})

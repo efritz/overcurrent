@@ -1,4 +1,4 @@
-package plugins
+package hystrix
 
 import (
 	"math"
@@ -10,7 +10,7 @@ import (
 	"github.com/efritz/sse"
 )
 
-type HystrixCollector struct {
+type Collector struct {
 	registry overcurrent.Registry
 	breakers map[string]*BreakerStats
 	events   chan interface{}
@@ -18,8 +18,8 @@ type HystrixCollector struct {
 	mutex    *sync.RWMutex
 }
 
-func NewHystrixCollector(registry overcurrent.Registry) *HystrixCollector {
-	return &HystrixCollector{
+func NewCollector(registry overcurrent.Registry) *Collector {
+	return &Collector{
 		registry: registry,
 		breakers: map[string]*BreakerStats{},
 		events:   make(chan interface{}),
@@ -28,7 +28,7 @@ func NewHystrixCollector(registry overcurrent.Registry) *HystrixCollector {
 	}
 }
 
-func (c *HystrixCollector) Start() {
+func (c *Collector) Start() {
 	go func() {
 		defer close(c.events)
 
@@ -36,7 +36,7 @@ func (c *HystrixCollector) Start() {
 			for _, name := range c.getNames() {
 				stats := c.getStats(name).Freeze()
 
-				if !c.send(c.makeCommandStats(name, stats)) || !c.send(c.makeThreadPoolStats(name, stats)) {
+				if !c.send(makeCommandStats(name, stats)) || !c.send(makeThreadPoolStats(name, stats)) {
 					return
 				}
 			}
@@ -50,35 +50,35 @@ func (c *HystrixCollector) Start() {
 	}()
 }
 
-func (c *HystrixCollector) Stop() {
+func (c *Collector) Stop() {
 	close(c.halt)
 }
 
-func (c *HystrixCollector) Handler() http.Handler {
+func (c *Collector) Handler() http.Handler {
 	server := sse.NewServer(c.events)
 	go server.Start()
 	return server
 }
 
-func (c *HystrixCollector) ReportNew(name string, config overcurrent.BreakerConfig) {
+func (c *Collector) ReportNew(name string, config overcurrent.BreakerConfig) {
 	c.mutex.Lock()
 	c.breakers[name] = NewBreakerStats(config)
 	c.mutex.Unlock()
 }
 
-func (c *HystrixCollector) ReportCount(name string, eventType overcurrent.EventType) {
+func (c *Collector) ReportCount(name string, eventType overcurrent.EventType) {
 	c.getStats(name).Increment(eventType)
 }
 
-func (c *HystrixCollector) ReportDuration(name string, eventType overcurrent.EventType, duration time.Duration) {
+func (c *Collector) ReportDuration(name string, eventType overcurrent.EventType, duration time.Duration) {
 	c.getStats(name).AddDuration(eventType, duration)
 }
 
-func (c *HystrixCollector) ReportState(name string, state overcurrent.CircuitState) {
+func (c *Collector) ReportState(name string, state overcurrent.CircuitState) {
 	c.getStats(name).SetState(state)
 }
 
-func (c *HystrixCollector) getNames() []string {
+func (c *Collector) getNames() []string {
 	c.mutex.RLock()
 	defer c.mutex.RUnlock()
 
@@ -90,7 +90,7 @@ func (c *HystrixCollector) getNames() []string {
 	return names
 }
 
-func (c *HystrixCollector) send(event map[string]interface{}) bool {
+func (c *Collector) send(event map[string]interface{}) bool {
 	select {
 	case <-c.halt:
 		return false
@@ -99,7 +99,7 @@ func (c *HystrixCollector) send(event map[string]interface{}) bool {
 	}
 }
 
-func (c *HystrixCollector) getStats(name string) *BreakerStats {
+func (c *Collector) getStats(name string) *BreakerStats {
 	c.mutex.RLock()
 	stats := c.breakers[name]
 	c.mutex.RUnlock()
@@ -107,7 +107,7 @@ func (c *HystrixCollector) getStats(name string) *BreakerStats {
 	return stats
 }
 
-func (c *HystrixCollector) makeCommandStats(name string, stats *FrozenBreakerStats) map[string]interface{} {
+func makeCommandStats(name string, stats *FrozenBreakerStats) map[string]interface{} {
 	var (
 		runDurations    = stats.durations[overcurrent.EventTypeRunDuration]
 		totalDurations  = stats.durations[overcurrent.EventTypeTotalDuration]
@@ -151,7 +151,7 @@ func (c *HystrixCollector) makeCommandStats(name string, stats *FrozenBreakerSta
 	return properties
 }
 
-func (c *HystrixCollector) makeThreadPoolStats(name string, stats *FrozenBreakerStats) map[string]interface{} {
+func makeThreadPoolStats(name string, stats *FrozenBreakerStats) map[string]interface{} {
 	properties := map[string]interface{}{
 		"type":                        "HystrixThreadPool",
 		"name":                        name,

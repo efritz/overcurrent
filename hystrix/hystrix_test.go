@@ -1,12 +1,12 @@
-package plugins
+package hystrix
 
 import (
 	"github.com/aphistic/sweet"
 	. "github.com/onsi/gomega"
 )
 
-type HystrixSuite struct{}
+type CollectorSuite struct{}
 
-func (s *HystrixSuite) TestX(t sweet.T) {
+func (s *CollectorSuite) TestX(t sweet.T) {
 	Expect(true).To(BeTrue()) // TODO
 }
