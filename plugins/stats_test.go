@@ -91,5 +91,24 @@ func (s *StatsSuite) TestIncrementDual(t sweet.T) {
 }
 
 func (s *StatsSuite) TestAddDuration(t sweet.T) {
-	// TODO
+	clock := glock.NewMockClock()
+	stats := newBreakerStatsWithClock(testConfig, clock)
+
+	for j := 0; j < 30; j++ {
+		clock.Advance(time.Second)
+
+		for i := 1; i <= 20; i++ {
+			stats.AddDuration(overcurrent.EventTypeRunDuration, time.Second*time.Duration(i))
+		}
+	}
+
+	expected := []time.Duration{}
+	for i := 1; i <= 20; i++ {
+		for j := 0; j < 10; j++ {
+			expected = append(expected, time.Second*time.Duration(i))
+		}
+	}
+
+	// Should be sorted
+	Expect(stats.Freeze().durations[overcurrent.EventTypeRunDuration]).To(Equal(expected))
 }
