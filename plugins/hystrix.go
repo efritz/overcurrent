@@ -34,36 +34,10 @@ func (c *HystrixCollector) Start() {
 
 		for {
 			for _, name := range c.getNames() {
-				stats := c.getStats(name)
-				state, semaphoreQueue, semaphoreCurrent, semaphoreMax, counts, durations := stats.GetAndReset()
+				stats := c.getStats(name).Freeze()
 
-				event1 := makeCommandStats(
-					name,
-					state,
-					counts,
-					durations,
-					c.registry,
-				)
-
-				select {
-				case <-c.halt:
+				if !c.send(c.makeCommandStats(name, stats)) || !c.send(c.makeThreadPoolStats(name, stats)) {
 					return
-				case c.events <- event1:
-				}
-
-				event2 := makeThreadPoolStats(
-					name,
-					counts,
-					stats.config.MaxConcurrency,
-					semaphoreQueue,
-					semaphoreCurrent,
-					semaphoreMax,
-				)
-
-				select {
-				case <-c.halt:
-					return
-				case c.events <- event2:
 				}
 			}
 
@@ -88,9 +62,8 @@ func (c *HystrixCollector) Server() http.Handler {
 
 func (c *HystrixCollector) ReportNew(name string, config overcurrent.BreakerConfig) {
 	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
 	c.breakers[name] = NewBreakerStats(config)
+	c.mutex.Unlock()
 }
 
 func (c *HystrixCollector) ReportCount(name string, eventType overcurrent.EventType) {
@@ -117,28 +90,29 @@ func (c *HystrixCollector) getNames() []string {
 	return names
 }
 
-func (c *HystrixCollector) getStats(name string) *BreakerStats {
-	c.mutex.RLock()
-	defer c.mutex.RUnlock()
-
-	return c.breakers[name]
+func (c *HystrixCollector) send(event map[string]interface{}) bool {
+	select {
+	case <-c.halt:
+		return false
+	case c.events <- event:
+		return true
+	}
 }
 
-//
-//
+func (c *HystrixCollector) getStats(name string) *BreakerStats {
+	c.mutex.RLock()
+	stats := c.breakers[name]
+	c.mutex.RUnlock()
 
-func makeCommandStats(
-	name string,
-	state overcurrent.CircuitState,
-	counts map[overcurrent.EventType]int,
-	durations map[overcurrent.EventType][]time.Duration,
-	registry overcurrent.Registry,
-) map[string]interface{} {
+	return stats
+}
+
+func (c *HystrixCollector) makeCommandStats(name string, stats *BreakerStats) map[string]interface{} {
 	var (
-		runDurations    = sortDurations(durations[overcurrent.EventTypeRunDuration])
-		totalDurations  = sortDurations(durations[overcurrent.EventTypeTotalDuration])
-		numErrors       = counts[overcurrent.EventTypeFailure]
-		numRequests     = counts[overcurrent.EventTypeAttempt]
+		runDurations    = sortDurations(stats.durations[overcurrent.EventTypeRunDuration])
+		totalDurations  = sortDurations(stats.durations[overcurrent.EventTypeTotalDuration])
+		numErrors       = stats.counters[overcurrent.EventTypeFailure]
+		numRequests     = stats.counters[overcurrent.EventTypeAttempt]
 		errorPercentage = 0.0
 	)
 
@@ -154,20 +128,20 @@ func makeCommandStats(
 		"errorCount":                            numErrors,
 		"requestCount":                          numRequests,
 		"errorPercentage":                       errorPercentage,
-		"rollingCountSuccess":                   counts[overcurrent.EventTypeSuccess],
-		"rollingCountFailure":                   counts[overcurrent.EventTypeError],
-		"rollingCountBadRequest":                counts[overcurrent.EventTypeBadRequest],
-		"rollingCountShortCircuited":            counts[overcurrent.EventTypeShortCircuit],
-		"rollingCountTimeout":                   counts[overcurrent.EventTypeTimeout],
-		"rollingCountSemaphoreRejected":         counts[overcurrent.EventTypeRejection],
-		"rollingCountFallbackSuccess":           counts[overcurrent.EventTypeFallbackSuccess],
-		"rollingCountFallbackFailure":           counts[overcurrent.EventTypeFallbackFailure],
+		"rollingCountSuccess":                   stats.counters[overcurrent.EventTypeSuccess],
+		"rollingCountFailure":                   stats.counters[overcurrent.EventTypeError],
+		"rollingCountBadRequest":                stats.counters[overcurrent.EventTypeBadRequest],
+		"rollingCountShortCircuited":            stats.counters[overcurrent.EventTypeShortCircuit],
+		"rollingCountTimeout":                   stats.counters[overcurrent.EventTypeTimeout],
+		"rollingCountSemaphoreRejected":         stats.counters[overcurrent.EventTypeRejection],
+		"rollingCountFallbackSuccess":           stats.counters[overcurrent.EventTypeFallbackSuccess],
+		"rollingCountFallbackFailure":           stats.counters[overcurrent.EventTypeFallbackFailure],
 		"latencyExecute":                        makeLatencies(runDurations),
 		"latencyTotal":                          makeLatencies(totalDurations),
 		"latencyExecute_mean":                   int(mean(runDurations) / time.Millisecond),
 		"latencyTotal_mean":                     int(mean(totalDurations) / time.Millisecond),
-		"isCircuitBreakerOpen":                  state != overcurrent.StateClosed,
-		"propertyValue_circuitBreakerForceOpen": state == overcurrent.StateHardOpen,
+		"isCircuitBreakerOpen":                  stats.state != overcurrent.StateClosed,
+		"propertyValue_circuitBreakerForceOpen": stats.state == overcurrent.StateHardOpen,
 	}
 
 	for k, v := range constantCommandProperties {
@@ -177,25 +151,18 @@ func makeCommandStats(
 	return properties
 }
 
-func makeThreadPoolStats(
-	name string,
-	counts map[overcurrent.EventType]int,
-	semaphoreCapacity,
-	semaphoreQueue,
-	semaphoreCurrent,
-	semaphoreMax int,
-) map[string]interface{} {
+func (c *HystrixCollector) makeThreadPoolStats(name string, stats *BreakerStats) map[string]interface{} {
 	properties := map[string]interface{}{
 		"type":                        "HystrixThreadPool",
 		"name":                        name,
-		"currentCorePoolSize":         semaphoreCapacity,
-		"currentLargestPoolSize":      semaphoreCapacity,
-		"currentMaximumPoolSize":      semaphoreCapacity,
-		"currentPoolSize":             semaphoreCapacity,
-		"currentActiveCount":          semaphoreCurrent,
-		"rollingMaxActiveThreads":     semaphoreMax,
-		"rollingCountThreadsExecuted": counts[overcurrent.EventTypeSemaphoreAcquired],
-		"currentQueueSize":            semaphoreQueue,
+		"currentCorePoolSize":         stats.config.MaxConcurrency,
+		"currentLargestPoolSize":      stats.config.MaxConcurrency,
+		"currentMaximumPoolSize":      stats.config.MaxConcurrency,
+		"currentPoolSize":             stats.config.MaxConcurrency,
+		"currentActiveCount":          stats.currents[overcurrent.EventTypeSemaphoreAcquired],
+		"rollingMaxActiveThreads":     stats.maximums[overcurrent.EventTypeSemaphoreAcquired],
+		"rollingCountThreadsExecuted": stats.counters[overcurrent.EventTypeSemaphoreAcquired],
+		"currentQueueSize":            stats.maximums[overcurrent.EventTypeSemaphoreQueued],
 	}
 
 	for k, v := range constantThreadPoolProperties {

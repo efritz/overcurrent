@@ -9,80 +9,95 @@ import (
 
 // TODO - these need to roll over a longer period
 
-type BreakerStats struct {
-	config           overcurrent.BreakerConfig
-	counters         map[overcurrent.EventType]int
-	durations        map[overcurrent.EventType][]time.Duration
-	semaphoreQueue   int
-	semaphoreCurrent int
-	semaphoreMax     int
-	state            overcurrent.CircuitState
-	mutex            *sync.RWMutex
+type (
+	BreakerStats struct {
+		config    overcurrent.BreakerConfig
+		counters  map[overcurrent.EventType]int
+		durations map[overcurrent.EventType][]time.Duration
+		currents  map[overcurrent.EventType]int
+		maximums  map[overcurrent.EventType]int
+		state     overcurrent.CircuitState
+		mutex     *sync.RWMutex
+	}
+
+	dualStatRelation struct {
+		eventType overcurrent.EventType
+		delta     int
+	}
+)
+
+var pairs = map[overcurrent.EventType]dualStatRelation{
+	overcurrent.EventTypeSemaphoreQueued:   dualStatRelation{overcurrent.EventTypeSemaphoreQueued, +1},
+	overcurrent.EventTypeSemaphoreDequeued: dualStatRelation{overcurrent.EventTypeSemaphoreQueued, -1},
+	overcurrent.EventTypeSemaphoreAcquired: dualStatRelation{overcurrent.EventTypeSemaphoreAcquired, +1},
+	overcurrent.EventTypeSemaphoreReleased: dualStatRelation{overcurrent.EventTypeSemaphoreAcquired, -1},
 }
 
 func NewBreakerStats(config overcurrent.BreakerConfig) *BreakerStats {
 	return &BreakerStats{
 		config:    config,
-		counters:  map[overcurrent.EventType]int{},
+		currents:  map[overcurrent.EventType]int{},
 		durations: map[overcurrent.EventType][]time.Duration{},
+		counters:  map[overcurrent.EventType]int{},
+		maximums:  map[overcurrent.EventType]int{},
 		mutex:     &sync.RWMutex{},
 	}
 }
 
-// TODO - make this less ad-hoc
-
 func (s *BreakerStats) Increment(eventType overcurrent.EventType) {
+	delta := 1
+	if dual, ok := pairs[eventType]; ok {
+		eventType = dual.eventType
+		delta = dual.delta
+	}
+
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	if eventType == overcurrent.EventTypeSemaphoreQueued {
-		s.semaphoreQueue++
-	} else if eventType == overcurrent.EventTypeSemaphoreDequeued {
-		s.semaphoreQueue--
-	} else if eventType == overcurrent.EventTypeSemaphoreAcquired {
-		s.semaphoreCurrent++
-		s.counters[eventType] = s.counters[eventType] + 1
+	s.counters[eventType] = s.counters[eventType] + 1
+	s.currents[eventType] = s.currents[eventType] + delta
 
-		if s.semaphoreCurrent > s.semaphoreMax {
-			s.semaphoreMax = s.semaphoreCurrent
-		}
-	} else if eventType == overcurrent.EventTypeSemaphoreReleased {
-		s.semaphoreCurrent--
-	} else {
-		// TODO - update these things without a lock if possible
-		s.counters[eventType] = s.counters[eventType] + 1
+	if s.currents[eventType] > s.maximums[eventType] {
+		s.maximums[eventType] = s.currents[eventType]
 	}
 }
 
 func (s *BreakerStats) AddDuration(eventType overcurrent.EventType, duration time.Duration) {
 	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
 	s.durations[eventType] = append(s.durations[eventType], duration)
+	s.mutex.Unlock()
 }
 
 func (s *BreakerStats) SetState(state overcurrent.CircuitState) {
 	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
 	s.state = state
+	s.mutex.Unlock()
 }
 
-// TODO - don't return entire state decomposed, be sane about this
-
-func (s *BreakerStats) GetAndReset() (overcurrent.CircuitState, int, int, int, map[overcurrent.EventType]int, map[overcurrent.EventType][]time.Duration) {
+func (s *BreakerStats) Freeze() *BreakerStats {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	var (
-		counters     = s.counters
-		durations    = s.durations
-		semaphoreMax = s.semaphoreMax
-	)
+	clone := &BreakerStats{
+		config:    s.config,
+		counters:  s.counters,
+		durations: s.durations,
+		currents:  s.currents,
+		maximums:  s.maximums,
+	}
 
 	s.counters = map[overcurrent.EventType]int{}
 	s.durations = map[overcurrent.EventType][]time.Duration{}
-	s.semaphoreMax = s.semaphoreCurrent
+	s.currents = cloneEventMap(s.currents)
+	s.maximums = cloneEventMap(s.currents)
+	return clone
+}
 
-	return s.state, s.semaphoreQueue, s.semaphoreCurrent, semaphoreMax, counters, durations
+func cloneEventMap(values map[overcurrent.EventType]int) map[overcurrent.EventType]int {
+	cloned := map[overcurrent.EventType]int{}
+	for k, v := range values {
+		cloned[k] = v
+	}
+
+	return cloned
 }
