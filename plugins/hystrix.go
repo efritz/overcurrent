@@ -54,9 +54,9 @@ func (c *HystrixCollector) Stop() {
 	close(c.halt)
 }
 
-func (c *HystrixCollector) Server() http.Handler {
+func (c *HystrixCollector) Handler() http.Handler {
 	server := sse.NewServer(c.events)
-	server.Start()
+	go server.Start()
 	return server
 }
 
@@ -107,10 +107,10 @@ func (c *HystrixCollector) getStats(name string) *BreakerStats {
 	return stats
 }
 
-func (c *HystrixCollector) makeCommandStats(name string, stats *BreakerStats) map[string]interface{} {
+func (c *HystrixCollector) makeCommandStats(name string, stats *FrozenBreakerStats) map[string]interface{} {
 	var (
-		runDurations    = sortDurations(stats.durations[overcurrent.EventTypeRunDuration])
-		totalDurations  = sortDurations(stats.durations[overcurrent.EventTypeTotalDuration])
+		runDurations    = stats.durations[overcurrent.EventTypeRunDuration]
+		totalDurations  = stats.durations[overcurrent.EventTypeTotalDuration]
 		numErrors       = stats.counters[overcurrent.EventTypeFailure]
 		numRequests     = stats.counters[overcurrent.EventTypeAttempt]
 		errorPercentage = 0.0
@@ -151,7 +151,7 @@ func (c *HystrixCollector) makeCommandStats(name string, stats *BreakerStats) ma
 	return properties
 }
 
-func (c *HystrixCollector) makeThreadPoolStats(name string, stats *BreakerStats) map[string]interface{} {
+func (c *HystrixCollector) makeThreadPoolStats(name string, stats *FrozenBreakerStats) map[string]interface{} {
 	properties := map[string]interface{}{
 		"type":                        "HystrixThreadPool",
 		"name":                        name,
@@ -199,7 +199,7 @@ var constantCommandProperties = map[string]interface{}{
 	"propertyValue_executionIsolationThreadPoolKeyOverride":          "",
 	"propertyValue_executionIsolationThreadTimeoutInMilliseconds":    "",
 	"propertyValue_fallbackIsolationSemaphoreMaxConcurrentRequests":  0,
-	"propertyValue_metricsRollingStatisticalWindowInMilliseconds":    1000,
+	"propertyValue_metricsRollingStatisticalWindowInMilliseconds":    10000,
 	"propertyValue_requestCacheEnabled":                              false,
 	"propertyValue_requestLogEnabled":                                false,
 	"reportingHosts":                                                 1,
@@ -213,7 +213,7 @@ var constantCommandProperties = map[string]interface{}{
 var constantThreadPoolProperties = map[string]interface{}{
 	"currentCompletedTaskCount":                                   15,
 	"currentTaskCount":                                            15,
-	"propertyValue_metricsRollingStatisticalWindowInMilliseconds": 1000,
+	"propertyValue_metricsRollingStatisticalWindowInMilliseconds": 10000,
 	"propertyValue_queueSizeRejectionThreshold":                   "NaN",
 	"reportingHosts":                                              1,
 }

@@ -1,10 +1,19 @@
 package plugins
 
 import (
-	"math"
 	"sort"
 	"time"
+
+	"github.com/efritz/overcurrent"
 )
+
+func sortDurationMap(values map[overcurrent.EventType][]time.Duration) map[overcurrent.EventType][]time.Duration {
+	for k, v := range values {
+		values[k] = sortDurations(v)
+	}
+
+	return values
+}
 
 func sortDurations(values []time.Duration) []time.Duration {
 	sort.Slice(values, func(i, j int) bool {
@@ -12,6 +21,23 @@ func sortDurations(values []time.Duration) []time.Duration {
 	})
 
 	return values
+}
+
+func max(a, b int) int {
+	if a < b {
+		return b
+	}
+
+	return a
+}
+
+func cloneMap(values map[overcurrent.EventType]int) map[overcurrent.EventType]int {
+	clone := map[overcurrent.EventType]int{}
+	for k, v := range values {
+		clone[k] = v
+	}
+
+	return clone
 }
 
 func mean(values []time.Duration) time.Duration {
@@ -36,5 +62,19 @@ func percentile(values []time.Duration, p float64) time.Duration {
 		return values[0]
 	}
 
-	return values[int(math.Ceil(p*float64(len(values))))-1]
+	index := int(round(p*float64(len(values)), 0.05))
+
+	if index >= len(values) {
+		index = len(values) - 1
+	}
+
+	return values[index]
+}
+
+func round(x, unit float64) float64 {
+	if x > 0 {
+		return float64(int64(x/unit+0.5)) * unit
+	}
+
+	return float64(int64(x/unit-0.5)) * unit
 }

@@ -1,23 +1,37 @@
 package plugins
 
 import (
+	"sort"
 	"sync"
 	"time"
 
+	"github.com/efritz/glock"
 	"github.com/efritz/overcurrent"
 )
 
-// TODO - these need to roll over a longer period
-
 type (
 	BreakerStats struct {
-		config    overcurrent.BreakerConfig
+		config  overcurrent.BreakerConfig
+		state   overcurrent.CircuitState
+		buckets map[int64]*bucket
+		mutex   *sync.RWMutex
+		clock   glock.Clock
+	}
+
+	bucket struct {
 		counters  map[overcurrent.EventType]int
 		durations map[overcurrent.EventType][]time.Duration
 		currents  map[overcurrent.EventType]int
 		maximums  map[overcurrent.EventType]int
+	}
+
+	FrozenBreakerStats struct {
+		config    overcurrent.BreakerConfig
 		state     overcurrent.CircuitState
-		mutex     *sync.RWMutex
+		counters  map[overcurrent.EventType]int
+		durations map[overcurrent.EventType][]time.Duration
+		currents  map[overcurrent.EventType]int
+		maximums  map[overcurrent.EventType]int
 	}
 
 	dualStatRelation struct {
@@ -34,38 +48,16 @@ var pairs = map[overcurrent.EventType]dualStatRelation{
 }
 
 func NewBreakerStats(config overcurrent.BreakerConfig) *BreakerStats {
+	return newBreakerStatsWithClock(config, glock.NewRealClock())
+}
+
+func newBreakerStatsWithClock(config overcurrent.BreakerConfig, clock glock.Clock) *BreakerStats {
 	return &BreakerStats{
-		config:    config,
-		currents:  map[overcurrent.EventType]int{},
-		durations: map[overcurrent.EventType][]time.Duration{},
-		counters:  map[overcurrent.EventType]int{},
-		maximums:  map[overcurrent.EventType]int{},
-		mutex:     &sync.RWMutex{},
+		config:  config,
+		buckets: map[int64]*bucket{},
+		mutex:   &sync.RWMutex{},
+		clock:   clock,
 	}
-}
-
-func (s *BreakerStats) Increment(eventType overcurrent.EventType) {
-	delta := 1
-	if dual, ok := pairs[eventType]; ok {
-		eventType = dual.eventType
-		delta = dual.delta
-	}
-
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	s.counters[eventType] = s.counters[eventType] + 1
-	s.currents[eventType] = s.currents[eventType] + delta
-
-	if s.currents[eventType] > s.maximums[eventType] {
-		s.maximums[eventType] = s.currents[eventType]
-	}
-}
-
-func (s *BreakerStats) AddDuration(eventType overcurrent.EventType, duration time.Duration) {
-	s.mutex.Lock()
-	s.durations[eventType] = append(s.durations[eventType], duration)
-	s.mutex.Unlock()
 }
 
 func (s *BreakerStats) SetState(state overcurrent.CircuitState) {
@@ -74,30 +66,142 @@ func (s *BreakerStats) SetState(state overcurrent.CircuitState) {
 	s.mutex.Unlock()
 }
 
-func (s *BreakerStats) Freeze() *BreakerStats {
+func (s *BreakerStats) Increment(eventType overcurrent.EventType) {
+	var (
+		dualType = eventType
+		delta    = 1
+	)
+
+	if dual, ok := pairs[eventType]; ok {
+		dualType = dual.eventType
+		delta = dual.delta
+	}
+
+	s.mutex.Lock()
+	s.getCurrentBucket().increment(eventType, dualType, delta)
+	s.mutex.Unlock()
+}
+
+func (s *BreakerStats) AddDuration(eventType overcurrent.EventType, duration time.Duration) {
+	s.mutex.Lock()
+	s.getCurrentBucket().addDuration(eventType, duration)
+	s.mutex.Unlock()
+}
+
+func (s *BreakerStats) getCurrentBucket() *bucket {
+	now := s.clock.Now().Unix()
+
+	if bucket, ok := s.buckets[now]; ok {
+		return bucket
+	}
+
+	var (
+		ts       = s.getBucketTimestamps()
+		currents = map[overcurrent.EventType]int{}
+		maximums = map[overcurrent.EventType]int{}
+	)
+
+	// If we need to create a new bucket, transfer the current
+	// counts from the last active bucket to this one. The max
+	// of this bucket will be the _current_ count, as that's
+	// the only number we've seen.
+
+	if len(ts) > 0 {
+		previous := s.buckets[ts[len(ts)-1]]
+		currents = cloneMap(previous.currents)
+		maximums = cloneMap(previous.currents)
+	}
+
+	bucket := &bucket{
+		counters:  map[overcurrent.EventType]int{},
+		durations: map[overcurrent.EventType][]time.Duration{},
+		currents:  currents,
+		maximums:  maximums,
+	}
+
+	s.buckets[now] = bucket
+	return bucket
+}
+
+func (s *BreakerStats) Freeze() *FrozenBreakerStats {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 
-	clone := &BreakerStats{
-		config:    s.config,
-		counters:  s.counters,
-		durations: s.durations,
-		currents:  s.currents,
-		maximums:  s.maximums,
+	var (
+		counters  = map[overcurrent.EventType]int{}
+		durations = map[overcurrent.EventType][]time.Duration{}
+		currents  = map[overcurrent.EventType]int{}
+		maximums  = map[overcurrent.EventType]int{}
+	)
+
+	// Ensure that at least one valid bucket exists at the
+	// time we emit stats. That will ensure that all of the
+	// semaphore queue/acquire current counts did not just
+	// fall away.
+	s.getCurrentBucket()
+
+	for _, ts := range s.getBucketTimestamps() {
+		bucket := s.buckets[ts]
+
+		for k, v := range bucket.counters {
+			counters[k] = counters[k] + v
+		}
+
+		for k, v := range bucket.durations {
+			durations[k] = append(durations[k], v...)
+		}
+
+		for k, v := range bucket.currents {
+			currents[k] = v
+		}
+
+		for k, v := range bucket.maximums {
+			maximums[k] = max(maximums[k], v)
+		}
 	}
 
-	s.counters = map[overcurrent.EventType]int{}
-	s.durations = map[overcurrent.EventType][]time.Duration{}
-	s.currents = cloneEventMap(s.currents)
-	s.maximums = cloneEventMap(s.currents)
-	return clone
+	return &FrozenBreakerStats{
+		config:    s.config,
+		state:     s.state,
+		counters:  counters,
+		durations: sortDurationMap(durations),
+		currents:  currents,
+		maximums:  maximums,
+	}
 }
 
-func cloneEventMap(values map[overcurrent.EventType]int) map[overcurrent.EventType]int {
-	cloned := map[overcurrent.EventType]int{}
-	for k, v := range values {
-		cloned[k] = v
+func (s *BreakerStats) getBucketTimestamps() []int64 {
+	var (
+		order  = []int64{}
+		expiry = s.clock.Now().Unix() - 10
+	)
+
+	for ts := range s.buckets {
+		order = append(order, ts)
 	}
 
-	return cloned
+	sort.Slice(order, func(a, b int) bool {
+		return order[a] < order[b]
+	})
+
+	for len(order) > 1 && order[0] <= expiry {
+		delete(s.buckets, order[0])
+		order = order[1:]
+	}
+
+	for len(order) > 0 && order[0] <= expiry {
+		order = order[1:]
+	}
+
+	return order
+}
+
+func (b *bucket) increment(typeA, typeB overcurrent.EventType, delta int) {
+	b.counters[typeA] = b.counters[typeA] + 1
+	b.currents[typeB] = b.currents[typeB] + delta
+	b.maximums[typeB] = max(b.maximums[typeB], b.currents[typeB])
+}
+
+func (b *bucket) addDuration(eventType overcurrent.EventType, duration time.Duration) {
+	b.durations[eventType] = append(b.durations[eventType], duration)
 }
