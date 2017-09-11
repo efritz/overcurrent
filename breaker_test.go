@@ -172,6 +172,22 @@ func (s *BreakerSuite) TestCallAsyncTimeout(t sweet.T) {
 	Eventually(errors).Should(Receive(Equal(ErrInvocationTimeout)))
 }
 
+func (s *BreakerSuite) TestMarkResultInvocationTimeout(t sweet.T) {
+	var (
+		called  = false
+		breaker = NewCircuitBreaker(
+			testConfig(),
+			WithFailureInterpreter(FailureInterpreterFunc(func(error) bool {
+				called = true
+				return true
+			})),
+		)
+	)
+
+	breaker.MarkResult(ErrInvocationTimeout)
+	Expect(called).To(BeFalse())
+}
+
 var (
 	TRIALS      = 50000
 	PROBAIBLITY = 0.25

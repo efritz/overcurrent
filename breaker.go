@@ -202,7 +202,6 @@ func (cb *circuitBreaker) ShouldTry() bool {
 }
 
 func (cb *circuitBreaker) MarkResult(err error) bool {
-	// TODO - test that this doesn't go to failure interpreter
 	if err != nil && (err == ErrInvocationTimeout || cb.failureInterpreter.ShouldTrip(err)) {
 		cb.mutex.Lock()
 		defer cb.mutex.Unlock()
