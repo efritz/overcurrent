@@ -19,24 +19,6 @@ type (
 		ReportState(CircuitState)
 	}
 
-	NamedMetricCollector interface {
-		// ReportNew is MetricCollector.ReportNew with the name of the breaker
-		// passed in as a first argument.
-		ReportNew(string, BreakerConfig)
-
-		// ReportCount is MetricCollector.ReportCount with the name of the breaker
-		// passed in as a first argument.
-		ReportCount(string, EventType)
-
-		// ReportDuration is MetricCollector.ReportDuration with the name of the breaker
-		// passed in as a first argument.
-		ReportDuration(string, EventType, time.Duration)
-
-		// ReportState is MetricCollector.ReportState with the name of the breaker
-		// passed in as a first argument.
-		ReportState(string, CircuitState)
-	}
-
 	// BreakerConfig is a struct that contains a copy of some of a breaker's
 	// initialization values. This struct may grow as metric collectors track
 	// additional breaker state.
@@ -44,12 +26,7 @@ type (
 		MaxConcurrency int
 	}
 
-	namedCollector struct {
-		name      string
-		collector NamedMetricCollector
-	}
-
-	// EventType distinguishes interesting occurrences
+	// EventType distinguishes interesting occurrences.
 	EventType int
 )
 
@@ -57,7 +34,7 @@ const (
 	// EventTypeAttempt occurs when Call or CallAsync is called.
 	EventTypeAttempt EventType = iota
 
-	// EventTypeSuccess occurs when a breaker func returns a nil error
+	// EventTypeSuccess occurs when a breaker func returns a nil error.
 	EventTypeSuccess
 
 	// EventTypeFailure occurs when a breaker func returns a non-nil error
@@ -73,10 +50,10 @@ const (
 	EventTypeBadRequest
 
 	// EventTypeShortCircuit occurs when a circuit is open and no breaker
-	// func is invoked
+	// func is invoked.
 	EventTypeShortCircuit
 
-	// EventTypeTimeout occurs when execution of a breaker func times out
+	// EventTypeTimeout occurs when execution of a breaker func times out.
 	EventTypeTimeout
 
 	// EventTypeRejection occurs when a breaker func cannot be invoked due
@@ -84,11 +61,11 @@ const (
 	EventTypeRejection
 
 	// EventTypeFallbackSuccess occurs when a fallback func returns a nil
-	// error
+	// error.
 	EventTypeFallbackSuccess
 
 	// EventTypeFallbackFailure occurs when a fallback func returns a non-nil
-	// error
+	// error.
 	EventTypeFallbackFailure
 
 	// EventTypeRunDuration marks the duration of a breaker func invocation.
@@ -114,29 +91,3 @@ const (
 	// EventTypeSemaphoreReleased occurs after the breaker func is invoked.
 	EventTypeSemaphoreReleased
 )
-
-// NamedCollector converts a named metric collector into a metric collector. The
-// name given to this constructor will be sent as the first argument to all of the
-// named metric collector methods.
-func NamedCollector(name string, collector NamedMetricCollector) MetricCollector {
-	return &namedCollector{
-		name:      name,
-		collector: collector,
-	}
-}
-
-func (c *namedCollector) ReportNew(config BreakerConfig) {
-	c.collector.ReportNew(c.name, config)
-}
-
-func (c *namedCollector) ReportCount(eventType EventType) {
-	c.collector.ReportCount(c.name, eventType)
-}
-
-func (c *namedCollector) ReportDuration(eventType EventType, duration time.Duration) {
-	c.collector.ReportDuration(c.name, eventType, duration)
-}
-
-func (c *namedCollector) ReportState(state CircuitState) {
-	c.collector.ReportState(c.name, state)
-}
