@@ -29,7 +29,7 @@ type (
 
 	registry struct {
 		breakers map[string]*wrappedBreaker
-		mutex    *sync.RWMutex
+		mutex    sync.RWMutex
 		clock    glock.Clock
 	}
 
@@ -54,7 +54,6 @@ func NewRegistry() Registry {
 func newRegistryWithClock(clock glock.Clock) Registry {
 	return &registry{
 		breakers: map[string]*wrappedBreaker{},
-		mutex:    &sync.RWMutex{},
 		clock:    clock,
 	}
 }

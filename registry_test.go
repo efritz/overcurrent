@@ -113,7 +113,7 @@ func (s *RegistrySuite) TestConcurrency(t sweet.T) {
 		r       = NewRegistry()
 		started = make(chan struct{}) // Signals start of f
 		block   = make(chan error, 5) // Blocks inside f
-		wg      = &sync.WaitGroup{}   // Signals end of f
+		wg      = sync.WaitGroup{}    // Signals end of f
 	)
 
 	defer close(started)
@@ -160,7 +160,7 @@ func (s *RegistrySuite) TestConcurrencyUnblocked(t sweet.T) {
 		r       = NewRegistry()
 		started = make(chan struct{}) // Signals start of f
 		block   = make(chan error, 5) // Blocks inside f
-		wg      = &sync.WaitGroup{}   // Signals end of f
+		wg      = sync.WaitGroup{}    // Signals end of f
 		result  = make(chan error)
 	)
 
@@ -212,7 +212,7 @@ func (s *RegistrySuite) TestConcurrencyTimeout(t sweet.T) {
 		r       = newRegistryWithClock(clock)
 		started = make(chan struct{}) // Signals start of f
 		block   = make(chan error, 5) // Blocks inside f
-		wg      = &sync.WaitGroup{}   // Signals end of f
+		wg      = sync.WaitGroup{}    // Signals end of f
 		result  = make(chan error)
 	)
 

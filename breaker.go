@@ -58,7 +58,7 @@ type (
 		tripCondition              TripCondition
 		collector                  MetricCollector
 		clock                      glock.Clock
-		mutex                      *sync.RWMutex
+		mutex                      sync.RWMutex
 		state                      CircuitState
 		lastFailureTime            *time.Time
 		resetTimeout               *time.Duration
@@ -99,7 +99,6 @@ func newCircuitBreaker(configs ...BreakerConfigFunc) *circuitBreaker {
 		tripCondition:              NewConsecutiveFailureTripCondition(5),
 		collector:                  defaultCollector,
 		clock:                      glock.NewRealClock(),
-		mutex:                      &sync.RWMutex{},
 	}
 
 	for _, config := range configs {
