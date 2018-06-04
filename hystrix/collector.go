@@ -14,7 +14,7 @@ type Collector struct {
 	breakers map[string]*BreakerStats
 	events   chan interface{}
 	halt     chan struct{}
-	mutex    *sync.RWMutex
+	mutex    sync.RWMutex
 }
 
 func NewCollector() *Collector {
@@ -22,7 +22,6 @@ func NewCollector() *Collector {
 		breakers: map[string]*BreakerStats{},
 		events:   make(chan interface{}),
 		halt:     make(chan struct{}),
-		mutex:    &sync.RWMutex{},
 	}
 }
 

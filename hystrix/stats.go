@@ -14,7 +14,7 @@ type (
 		config  overcurrent.BreakerConfig
 		state   overcurrent.CircuitState
 		buckets map[int64]*bucket
-		mutex   *sync.RWMutex
+		mutex   sync.RWMutex
 		clock   glock.Clock
 	}
 
@@ -55,7 +55,6 @@ func newBreakerStatsWithClock(config overcurrent.BreakerConfig, clock glock.Cloc
 	return &BreakerStats{
 		config:  config,
 		buckets: map[int64]*bucket{},
-		mutex:   &sync.RWMutex{},
 		clock:   clock,
 	}
 }
