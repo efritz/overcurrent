@@ -1,16 +1,16 @@
+env:
+  global:
+    - CC_TEST_REPORTER_ID=f7246df4375f8d9df397cc6fca1de370c3fe2adb58755d2d1545be0732ff4bca
 language: go
-
 go:
-    - 1.8
-    - 1.9
-    - tip
-
+  - 1.9.x
+  - 1.10.x
+  - tip
+before_script:
+  - curl -L https://codeclimate.com/downloads/test-reporter/test-reporter-latest-linux-amd64 > ./cc-test-reporter
+  - chmod +x ./cc-test-reporter
+  - ./cc-test-reporter before-build
 script:
-    - go test -coverprofile=coverage.txt -covermode=atomic
-
-after_success:
-    - bash <(curl -s https://codecov.io/bash)
-
-addons:
-    code_climate:
-        repo_token: f7246df4375f8d9df397cc6fca1de370c3fe2adb58755d2d1545be0732ff4bca
+  - go test -coverprofile=c.out -covermode=atomic
+after_script:
+  - ./cc-test-reporter after-build --coverage-input-type gocov --exit-code $TRAVIS_TEST_RESULT
